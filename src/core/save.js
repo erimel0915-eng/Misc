@@ -2,7 +2,10 @@
  * unavailable (private browsing, file:// restrictions) so the game still runs.
  */
 AL.Save = (function () {
-  var KEY = 'ashlight.save.v1';
+  /* Bumped when the level set is restructured. Progress is stored as a level
+   * index, so a save written against a different set of levels would drop the
+   * player in the wrong place — or past the end of the game. */
+  var KEY = 'ashlight.save.v2';
   var mem = null;
   var usable = true;
 

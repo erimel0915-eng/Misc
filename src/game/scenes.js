@@ -53,7 +53,9 @@ AL.Scenes = (function () {
     if (In.consume('accept')) {
       AL.Audio.sfx('ui');
       var it = this.items[this.sel];
-      if (it.key === 'continue') AL.Game.startPlay(AL.Save.get().room || 0);
+      if (it.key === 'continue') {
+        AL.Game.startPlay(U.clamp(AL.Save.get().room | 0, 0, AL.Levels.rooms.length - 1));
+      }
       else if (it.key === 'new') { AL.Save.reset(); AL.Game.startPlay(0); }
       else if (it.key === 'select') AL.Game.setScene(new Select());
       else if (it.key === 'credits') AL.Game.setScene(new Credits(false));

@@ -482,5 +482,24 @@ section('altars grant their abilities');
   }
 }
 
+
+
+/* ------------------------------- 10. a stale saved index cannot skip the game */
+section('a saved level index is never trusted blindly');
+{
+  AL.Save.reset();
+  const s = AL.Save.get();
+  s.started = true;
+  s.room = 999;                       // e.g. a save from a different level set
+  AL.Save.put();
+  const w = freshWorld({ allAbilities: true });
+  let threw = null;
+  try { w.start(999); } catch (e) { threw = e; }
+  ok('an out-of-range index does not throw', !threw, threw && threw.message);
+  ok('it lands on a real level', !!w.level && w.roomIndex < AL.Levels.rooms.length,
+     'roomIndex=' + w.roomIndex);
+  ok('it does not drop you at the ending', w._endings.length === 0, w._endings.join());
+}
+
 console.log(`\n================  ${pass} passed, ${fail} failed  ================`);
 process.exit(fail ? 1 : 0);

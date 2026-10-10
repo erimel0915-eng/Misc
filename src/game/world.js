@@ -68,7 +68,9 @@ AL.World = (function () {
   /* ------------------------------------------------------------ room setup */
 
   World.prototype.start = function (roomIndex) {
-    this.loadRoom(roomIndex || 0, true);
+    // Defensive: never trust a stored index to still be in range.
+    var i = U.clamp(roomIndex | 0, 0, AL.Levels.rooms.length - 1);
+    this.loadRoom(i, true);
   };
 
   World.prototype.loadRoom = function (index, announce) {
