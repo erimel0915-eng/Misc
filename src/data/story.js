@@ -189,7 +189,11 @@ AL.Story = (function () {
 
   rune_cut: [
     { who: 'echo', text: 'The light will cut you. It cuts anything that is there.' },
-    { who: 'wren', text: 'Then I will put something there that doesn\'t mind.' },
+    { who: 'wren', text: 'It sleeps, though. Look. On, and then off, and then on.' },
+    { who: 'echo', text: 'Then go in while it sleeps, and leave someone standing '
+                       + 'in the way before it wakes.' },
+    { who: 'wren', text: 'Something that doesn\'t mind being cut.' },
+    { act: 'wait', arg: 0.6 },
     { who: 'echo', text: 'She minds. She just does it anyway.' }
   ],
 

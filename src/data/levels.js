@@ -127,7 +127,7 @@ AL.Levels = (function () {
         '              A    *          ',
         '   #####      A   ####        ',
         '              A               ',
-        ' P   a        A  R    *   X   ',
+        ' P R a        A       *   X   ',
         G, G
       ] }),
 
@@ -173,7 +173,7 @@ AL.Levels = (function () {
         '         *                    ',
         '      #####          ####     ',
         '',
-        ' P  a           R        X    ',
+        ' P  a  R                 X    ',
         '##############EEEEEEEE########',
         '##############        ########'
       ] }),
@@ -199,7 +199,7 @@ AL.Levels = (function () {
         '',
         '',
         '        #                     ',
-        ' P  T   #   R             X   ',
+        ' P  T R #                 X   ',
         G, G
       ] }),
 
@@ -220,7 +220,7 @@ AL.Levels = (function () {
         '    *             A B         ',
         '  #####           A B         ',
         '                  A B         ',
-        ' P  a    b    R   A B  *  X   ',
+        ' P R a   b        A B  *  X   ',
         G, G
       ] }),
 
@@ -381,30 +381,36 @@ AL.Levels = (function () {
   R({ id: 'c4r2', chamber: 4, name: 'Cut', dark: 0.36,
       hint: 'A BODY STOPS THE LIGHT',
       cfg: {
-        lasers: [{}],
+        // An Echo can only exist where Wren survived standing, so a beam that
+        // never sleeps can never be blocked. It pulses, and starts dark.
+        lasers: [{ blink: [1.4, 2.8, 1.4] }],
         runes: [{ key: 'rune_cut' }]
       },
+      /* The beam lies along the floor of a roofed corridor, so it cannot be
+       * climbed around, and the approach to it is safe. Wait for it to sleep,
+       * step in, leave a body standing in it, and walk out through the shadow
+       * your own Echo is casting. */
       map: [
         '',
         '   +                      +   ',
         '',
         '',
-        '          o                   ',
-        '       ######                 ',
+        '        o                     ',
+        '     ######                   ',
         '',
-        '              *               ',
-        '           ######             ',
+        '            *                 ',
+        '         ######               ',
+        '              ################',
         '',
-        ' r        *                   ',
-        '  ###########                 ',
+        '   #####                      ',
         '',
-        ' P   R           *        X   ',
+        ' P R    r          *      X   ',
         G, G
       ] }),
 
   R({ id: 'c4r3', chamber: 4, name: 'The Furnace', dark: 0.38,
       cfg: {
-        lasers: [{ blink: [1.5, 1.2, 0] }, { blink: [1.3, 1.4, 0.7] }],
+        lasers: [{ blink: [1.6, 2.4, 1.6] }, { blink: [1.4, 2.6, 0.5] }],
         runes: [{ key: 'rune_furnace' }]
       },
       map: [
@@ -597,7 +603,7 @@ AL.Levels = (function () {
   R({ id: 'c6r3', chamber: 6, name: 'The Long Way Down', dark: 0.56,
       cfg: {
         movers: [{ dx: 10, dy: 0, dur: 4.2, w: 2 }],
-        lasers: [{ blink: [1.1, 1.0, 0] }],
+        lasers: [{ blink: [1.5, 2.1, 1.5] }],
         runes: [{ key: 'rune_down' }]
       },
       map: [
@@ -621,7 +627,7 @@ AL.Levels = (function () {
 
   R({ id: 'c6r4', chamber: 6, name: 'One Voice', dark: 0.58,
       cfg: {
-        lasers: [{}, {}],
+        lasers: [{ blink: [1.7, 2.0, 1.7] }, { blink: [1.5, 2.2, 0.4] }],
         runes: [{ key: 'rune_one' }]
       },
       map: [

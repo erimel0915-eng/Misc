@@ -281,7 +281,9 @@ AL.Entities = (function () {
     this.blink = cfg.blink || null;    // [onSec, offSec, phaseSec]
     this.t = cfg.phase || 0;
     this.len = 0;
-    this.active = true;
+    // Resolved on the first update. Starting it `true` would claim the beam is
+    // live for one frame before anything has computed where it reaches.
+    this.active = false;
   }
   Laser.prototype.origin = function () {
     return { x: this.x + T / 2 + this.dx * 5, y: this.y + T / 2 + this.dy * 5 };

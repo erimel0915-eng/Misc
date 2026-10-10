@@ -94,6 +94,23 @@ They're laid out against measured jump arcs rather than guesswork:
 breaks the 3-tile rule declare `assist: 'step'` or `assist: 'ride'`; optional
 memory motes are allowed to demand an Echo anywhere.
 
+## Tests
+
+```
+node test/run.js
+```
+
+A headless harness stubs the browser and runs the real game logic — level
+structure and reachability, beam coverage against standable ground, the Echo
+mechanic (including that a replay stays bit-exact across loops), every dialogue
+script, all three endings, the first Echo puzzle solved move by move, the laser
+corridor solved the intended way, and a full 26-room playthrough.
+
+The reachability and beam checks are the ones that earn their keep: an Echo can
+only exist where Wren survived standing, so a beam that never switches off over
+a whole ledge makes that ledge unreachable forever. That is a bug you cannot see
+by looking at the map.
+
 ## Credits
 
 Written in one sitting. The best ending belongs to Warden 940, who worked it out
