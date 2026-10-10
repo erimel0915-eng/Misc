@@ -12,8 +12,13 @@ AL.Game = (function () {
 
   function fit() {
     var pad = 24;
+    // Measure the page chrome rather than assuming it: this same code runs
+    // under a one-line hint and under a two-line legend.
+    var chrome = 20;
+    var legend = document.getElementById('legend') || document.getElementById('hint');
+    if (legend && legend.offsetHeight) chrome = legend.offsetHeight + 18;
     var availW = Math.max(160, window.innerWidth - pad);
-    var availH = Math.max(120, window.innerHeight - pad - 20);
+    var availH = Math.max(120, window.innerHeight - pad - chrome);
     var scale = Math.min(availW / AL.W, availH / AL.H);
     // prefer crisp integer scaling, but never shrink below fitting the window
     var s = scale >= 1 ? Math.max(1, Math.floor(scale)) : scale;
