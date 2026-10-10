@@ -9,6 +9,7 @@ const SUITES = [
   ['validate.js',   'level structure, reachability, script references'],
   ['lasers.js',     'beam coverage vs. standable ground'],
   ['sim.js',        'engine, echoes, hazards, dialogue, endings, menus'],
+  ['economy.js',    'emberlight, rank, the Cache, the Posts'],
   ['puzzles.js',    'the jump ladder and the first Echo puzzle'],
   ['solve-cut.js',  'the laser corridor, solved the intended way'],
   ['playthrough.js','every level, start to ending'],

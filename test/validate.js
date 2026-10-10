@@ -187,6 +187,57 @@ for (const r of rooms) {
   });
 }
 
+/* ------------------------------------------- comfortable onward connections */
+/* The reachability pass above asks "is there a route at all", and will happily
+ * route you up an Echo ride. This asks a blunter question of every ledge: can
+ * you get off it with room to spare? A jump that only works by three pixels is
+ * a bug report waiting to happen — which is exactly how the shaft shipped a
+ * five-tile gap with a two-row drop. */
+const K = AL.Player.K;
+function jumpSpan(dropPx) {
+  const rise = (K.JUMP_V * K.JUMP_V) / (2 * K.GRAV);
+  const tUp = -K.JUMP_V / K.GRAV;
+  const tDown = Math.sqrt(2 * Math.max(1, rise + dropPx) / K.GRAV);
+  return K.RUN_MAX * (tUp + tDown);
+}
+
+const MARGIN = 12;          // pixels of slack we insist on
+for (const r of rooms) {
+  const grid = r.map, W = grid[0].length, H = grid.length;
+  const spans = [];
+  for (let y = 0; y < H; y++) {
+    let s = -1;
+    for (let x = 0; x <= W; x++) {
+      const solid = x < W && STANDABLE.has(grid[y][x]);
+      const headroom = x < W && y > 0 && !SOLIDISH.has(grid[y - 1][x]);
+      if (solid && headroom) { if (s < 0) s = x; }
+      else if (s >= 0) { spans.push({ y, x0: s, x1: x - 1 }); s = -1; }
+    }
+  }
+  const dashes = r.chamber >= 4;
+  for (const a of spans) {
+    if (a.y >= H - 2) continue;                    // the floor needs no exit
+    if (a.x1 - a.x0 < 1) continue;                 // a single tile is a perch
+    let best = -1e9, bestTo = null;
+    for (const b of spans) {
+      if (b === a) continue;
+      const drop = (b.y - a.y) * 16;
+      if (drop < -3 * 16) continue;                // more than a jump upward
+      if (drop > 24 * 16) continue;                // far below: a different area
+      const gap = (b.x0 > a.x1) ? (b.x0 - a.x1 - 1)
+                : (a.x0 > b.x1) ? (a.x0 - b.x1 - 1) : -1;
+      if (gap < 0) { best = 1e9; bestTo = b; break; }   // overlapping: walk off
+      const need = gap * 16;
+      const have = jumpSpan(Math.max(0, drop)) * (dashes ? 1.9 : 1);
+      if (have - need > best) { best = have - need; bestTo = b; }
+    }
+    if (bestTo && best < MARGIN) {
+      note(r.id, `ledge row ${a.y} cols ${a.x0}..${a.x1} has only ${best.toFixed(0)}px of slack ` +
+                 `on its best jump (to row ${bestTo.y})` + (dashes ? '' : ' and there is no dash yet'));
+    }
+  }
+}
+
 console.log(`rooms: ${rooms.length}   emberlight: ${totalShards}   motes: ${totalMotes} (story expects ${AL.Story.memoryTotal})`);
 if (totalMotes !== AL.Story.memoryTotal) problems.push(`mote count ${totalMotes} != Story.memoryTotal ${AL.Story.memoryTotal}`);
 

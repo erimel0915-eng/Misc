@@ -45,10 +45,11 @@ AL.Player = (function () {
     this.dead = false;
     this.deathT = 0;
     this.deathCause = null;
-    this.spawnT = 0.3;
+    this.spawnT = 0.3 + (AL.Meta ? AL.Meta.graceBonus() : 0);
     this.dash = 0;          // remaining dash time
     this.dashCool = 0;
     this.dashReady = true;
+    this.dashCharges = 1;
     this.dashDirX = 0; this.dashDirY = 0;
     this.squashX = 1; this.squashY = 1;
     this.landT = 0;
@@ -90,16 +91,23 @@ AL.Player = (function () {
     /* ---- dash ---- */
     if (this.dashCool > 0) this.dashCool -= dt;
     if (world.hasAbility('dash')) {
-      if (this.grounded && this.dash <= 0) this.dashReady = true;
-      if (canAct && In.pressed('dash') && this.dashReady && this.dash <= 0 && this.dashCool <= 0) {
+      var maxCharges = 1 + AL.Meta.airDashes();
+      if (this.grounded && this.dash <= 0) this.dashCharges = maxCharges;
+      if (canAct && In.pressed('dash') && this.dashCharges > 0 && this.dash <= 0 && this.dashCool <= 0) {
         In.consume('dash');
         var dx = ix, dy = iy;
+        /* A Second Wind carries you forward, not up. The first dash off the
+         * ground is yours to aim; any extra one bought in the Cache is
+         * horizontal only, so no purchase can lift Wren past the 7 tiles the
+         * level design already grants for riding an Echo. */
+        var isAirDash = this.dashCharges < maxCharges;
+        if (isAirDash) { dy = 0; if (!dx) dx = this.face; }
         if (!dx && !dy) dx = this.face;
         var m = Math.sqrt(dx * dx + dy * dy) || 1;
         this.dashDirX = dx / m; this.dashDirY = dy / m;
         this.dash = K.DASH_TIME;
-        this.dashReady = false;
-        this.dashCool = K.DASH_COOL;
+        this.dashCharges--;
+        this.dashCool = K.DASH_COOL * AL.Meta.dashCoolScale();
         this.vx = this.dashDirX * K.DASH_SPEED;
         this.vy = this.dashDirY * K.DASH_SPEED;
         if (dx) this.face = U.sign(dx);
@@ -129,7 +137,7 @@ AL.Player = (function () {
         this.face = ix;
         // turning around is snappier than accelerating from rest
         var turn = (U.sign(this.vx) !== 0 && U.sign(this.vx) !== ix) ? 1.9 : 1;
-        this.vx = U.approach(this.vx, ix * K.RUN_MAX, acc * turn * dt);
+        this.vx = U.approach(this.vx, ix * K.RUN_MAX * AL.Meta.runScale(), acc * turn * dt);
       } else {
         var f = this.grounded ? K.FRICTION : K.AIR_DRAG;
         this.vx = U.decay(this.vx, f * dt);
@@ -146,8 +154,9 @@ AL.Player = (function () {
     }
 
     /* ---- jump ---- */
-    if (this.grounded) this.coyote = K.COYOTE; else this.coyote = Math.max(0, this.coyote - dt);
-    if (canAct && In.pressed('jump')) this.buffer = K.BUFFER;
+    var foot = AL.Meta.footingScale();
+    if (this.grounded) this.coyote = K.COYOTE * foot; else this.coyote = Math.max(0, this.coyote - dt);
+    if (canAct && In.pressed('jump')) this.buffer = K.BUFFER * foot;
     this.buffer = Math.max(0, this.buffer - dt);
 
     if (this.buffer > 0 && this.coyote > 0 && this.dash <= 0) {
@@ -291,7 +300,7 @@ AL.Player = (function () {
   Player.prototype.lights = function (out) {
     // Wren carries a dying lantern; it is barely enough.
     var fl = 1 + Math.sin(this.lanternT * 9) * 0.04 + Math.sin(this.lanternT * 3.1) * 0.05;
-    out.push({ wx: this.x + this.w / 2, wy: this.y + 6, r: 54 * fl, color: C.ember,
+    out.push({ wx: this.x + this.w / 2, wy: this.y + 6, r: 54 * fl * AL.Meta.lanternScale(), color: C.ember,
                intensity: 0.26, reveals: false, soft: 0.35 });
   };
 

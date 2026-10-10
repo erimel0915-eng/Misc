@@ -19,7 +19,9 @@ AL.Entities = (function () {
     if (this.pop > 0) this.pop -= dt;
     if (this.taken) return;
     var p = world.player;
-    if (p && !p.dead && U.rectsOverlap(p.x, p.y, p.w, p.h, this.x + 3, this.y + 3, T - 6, T - 6)) {
+    var reach = AL.Meta.drawRadius();
+    if (p && !p.dead && U.rectsOverlap(p.x, p.y, p.w, p.h,
+          this.x + 3 - reach, this.y + 3 - reach, T - 6 + reach * 2, T - 6 + reach * 2)) {
       this.taken = true;
       this.pop = 0.4;
       world.collectShard(this);
@@ -71,7 +73,9 @@ AL.Entities = (function () {
     if (this.taken) return;
     if (world.save.memories[this.id]) { this.taken = true; return; }
     var p = world.player;
-    if (p && !p.dead && U.rectsOverlap(p.x, p.y, p.w, p.h, this.x + 2, this.y + 2, T - 4, T - 4)) {
+    var mreach = AL.Meta.drawRadius();
+    if (p && !p.dead && U.rectsOverlap(p.x, p.y, p.w, p.h,
+          this.x + 2 - mreach, this.y + 2 - mreach, T - 4 + mreach * 2, T - 4 + mreach * 2)) {
       this.taken = true;
       world.collectMote(this);
     }
@@ -468,6 +472,7 @@ AL.Entities = (function () {
         AL.Particles.burst(this.x + this.w / 2, this.y + this.h / 2, C.ember, 22, 90, { life: 0.7 });
         AL.Particles.ring(this.x + this.w / 2, this.y + this.h / 2, C.ember, 30, 0.5, 2);
         AL.Audio.sfx('echoClear');
+        if (world.reward) world.reward(20, this.x + this.w / 2, this.y, 'unmade');
         return;
       }
     } else {

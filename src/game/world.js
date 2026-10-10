@@ -11,6 +11,10 @@ AL.World = (function () {
     this.save = AL.Save.get();
     this.onEnding = opts.onEnding || function () {};
     this.onComplete = opts.onComplete || function () {};
+    this.onLevelComplete = opts.onLevelComplete || null;
+    this.pops = [];                 // floating '+N' numbers
+    this.rankFlash = 0;
+    this.earnedHere = 0;
 
     this.roomIndex = 0;
     this.level = null;
@@ -44,13 +48,27 @@ AL.World = (function () {
   World.prototype.hasAbility = function (n) { return !!this.save.abilities[n]; };
 
   World.prototype.recordSeconds = function () {
-    return this.hasAbility('longbreath') ? 5.0 : 3.0;
+    return (this.hasAbility('longbreath') ? 5.0 : 3.0) + AL.Meta.breathBonus();
   };
 
   World.prototype.maxEchoes = function () {
-    if (this.hasAbility('choir')) return 3;
-    if (this.hasAbility('twin')) return 2;
-    return 1;
+    var n = this.hasAbility('choir') ? 3 : (this.hasAbility('twin') ? 2 : 1);
+    return n + AL.Meta.extraEchoes();
+  };
+
+  /* Pay out, and say so where it happened. */
+  World.prototype.reward = function (base, x, y, label) {
+    var res = AL.Meta.award(base);
+    this.earnedHere += res.amount;
+    this.pops.push({ x: x, y: y, t: 0, text: '+' + res.amount, color: C.ember, label: label || '' });
+    if (res.rankUp) {
+      this.rankFlash = 1;
+      this.toast = { t: 0, text: 'WARDEN RANK ' + res.rank, color: C.iris };
+      AL.Audio.sfx('unlock');
+      AL.FX.addFlash(0.22, C.iris);
+      AL.Particles.ring(x, y, C.iris, 70, 0.9, 2);
+    }
+    return res;
   };
 
   World.prototype.grantAbility = function (name, scriptKey, x, y) {
@@ -147,13 +165,14 @@ AL.World = (function () {
 
   World.prototype.exitRoom = function () {
     if (this.transition) return;
-    var def = AL.Levels.rooms[this.roomIndex];
     this.save.shards = (this.save.shards || 0) + this.level.requiredShards;
     AL.Save.put();
+    var c = this.player.center();
+    var bonus = this.reward(150 * this.level.chamber, c.x, c.y - 14, 'descent');
     AL.Audio.sfx('uiBig');
     AL.FX.addFlash(0.25, C.ember);
-    var c = this.player.center();
-    this.transition = { t: 0, dur: 0.95, next: this.roomIndex + 1, cx: c.x, cy: c.y };
+    this.transition = { t: 0, dur: 0.95, next: this.roomIndex + 1, cx: c.x, cy: c.y,
+                        handoff: true };
   };
 
   World.prototype.roomCleared = function () {
@@ -164,6 +183,7 @@ AL.World = (function () {
 
   World.prototype.collectShard = function (shard) {
     this.roomShards++;
+    this.reward(30, shard.x + T / 2, shard.y, 'emberlight');
     AL.Audio.sfx('shard', this.roomShards - 1);
     AL.FX.addShake(1.4, 9);
     AL.FX.addFreeze(0.03);
@@ -178,6 +198,7 @@ AL.World = (function () {
   World.prototype.collectMote = function (mote) {
     this.save.memories[mote.id] = true;
     AL.Save.put();
+    this.reward(300, mote.x + T / 2, mote.y, 'memory');
     AL.Audio.sfx('memory');
     AL.FX.addFlash(0.3, C.iris);
     AL.Particles.burst(mote.x + T / 2, mote.y + T / 2, C.iris, 30, 120, { life: 1.0, grav: -40 });
@@ -385,6 +406,22 @@ AL.World = (function () {
     }
     if (this.hintT > 0) this.hintT -= dt;
 
+    /* The Posts pay continuously. Showing a number every second would be
+     * noise, so batch it and surface it now and then. */
+    var dripped = AL.Meta.tick(dt);
+    this._dripPool = (this._dripPool || 0) + dripped;
+    this._dripT = (this._dripT || 0) + dt;
+    if (this._dripT > 6 && this._dripPool > 0 && this.player) {
+      this.pops.push({ x: this.player.x + 5, y: this.player.y - 8, t: 0,
+                       text: '+' + this._dripPool, color: C.plate, label: 'posts' });
+      this._dripPool = 0; this._dripT = 0;
+    }
+    this.rankFlash = U.decay(this.rankFlash, dt * 1.2);
+    for (var pi = this.pops.length - 1; pi >= 0; pi--) {
+      this.pops[pi].t += dt;
+      if (this.pops[pi].t > 1.3) this.pops.splice(pi, 1);
+    }
+
     this.spawnAsh(dt);
 
     if (this.transition) {
@@ -392,6 +429,13 @@ AL.World = (function () {
       var tr = this.transition;
       if (tr.t >= tr.dur * 0.5 && !tr.loaded) {
         tr.loaded = true;
+        if (tr.handoff && this.onLevelComplete && tr.next < AL.Levels.rooms.length) {
+          var summary = { next: tr.next, earned: this.earnedHere,
+                          level: AL.Levels.rooms[this.roomIndex] };
+          this.earnedHere = 0;
+          this.onLevelComplete(summary);
+          return;
+        }
         this.loadRoom(tr.next);
       }
       if (tr.t >= tr.dur) this.transition = null;
@@ -530,6 +574,15 @@ AL.World = (function () {
     this.recorder.draw(g);
     if (this.player) this.player.draw(g, this);
 
+    for (var pp = 0; pp < this.pops.length; pp++) {
+      var po = this.pops[pp];
+      var pt = po.t / 1.3;
+      AL.Draw.text(g, po.text, po.x, po.y - pt * 22, {
+        size: 8, align: 'center', color: po.color, spacing: 0.6,
+        alpha: Math.min(1, (1 - pt) * 2.2), glow: po.color, glowSize: 6
+      });
+    }
+
     g.restore();
 
     /* The darkness pass is a full-screen overlay, so it has to happen outside
@@ -613,6 +666,41 @@ AL.World = (function () {
         AL.Draw.text(g, 'X RECALL', ex + maxE * 7 + 6, ey - 1,
                      { size: 6, color: U.rgba(C.ash, 0.45), spacing: 1 });
       }
+    }
+
+    /* The purse. This is the number the whole meta-game is about, so it sits
+     * where the eye already goes for the level objective. */
+    var ember = this.save.ember | 0;
+    var py = pad + 10;
+    AL.Draw.text(g, ember.toLocaleString(), AL.W - pad, py, {
+      size: 9, align: 'right', color: C.emberHot, spacing: 1,
+      glow: this.rankFlash > 0.02 ? C.iris : C.ember, glowSize: 6
+    });
+    var dw = AL.Draw.textWidth(g, ember.toLocaleString(), 9, 1);
+    AL.Draw.ember(g, AL.W - pad - dw - 8, py + 4, C.ember);
+
+    // rank, with its bar
+    var rp = AL.Meta.rankProgress();
+    var rx = AL.W - pad - 56, ry = py + 13;
+    AL.Draw.text(g, 'RANK ' + rp.r, AL.W - pad, ry, {
+      size: 6, align: 'right', color: U.rgba(C.iris, 0.8), spacing: 1.2
+    });
+    g.fillStyle = U.rgba(C.void0, 0.8);
+    g.fillRect(rx, ry + 9, 56, 3);
+    g.fillStyle = C.iris;
+    g.fillRect(rx, ry + 9, Math.round(56 * rp.frac), 3);
+    if (this.rankFlash > 0.02) {
+      g.globalAlpha = this.rankFlash;
+      g.fillStyle = '#ffffff';
+      g.fillRect(rx, ry + 9, 56, 3);
+      g.globalAlpha = 1;
+    }
+
+    var ips = AL.Meta.yieldPerSecond();
+    if (ips > 0) {
+      AL.Draw.text(g, '+' + ips.toFixed(2) + '/s', AL.W - pad, ry + 14, {
+        size: 6, align: 'right', color: U.rgba(C.plate, 0.7), spacing: 1
+      });
     }
 
     // memory counter, only once you've found one

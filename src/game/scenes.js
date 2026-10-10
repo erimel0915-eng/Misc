@@ -30,6 +30,10 @@ AL.Scenes = (function () {
     }
     items.push({ key: 'new', label: AL.Save.hasRun() ? 'Begin Again' : 'Begin the Descent' });
     if (save.room > 0) items.push({ key: 'select', label: 'Chamber Select' });
+    if (AL.Save.hasRun()) {
+      items.push({ key: 'cache', label: "The Warden's Cache",
+                   note: (save.ember | 0).toLocaleString() + ' to spend' });
+    }
     items.push({ key: 'credits', label: 'Credits' });
     this.items = items;
     this.sel = 0;
@@ -42,6 +46,7 @@ AL.Scenes = (function () {
 
   Title.prototype.enter = function () {
     AL.Audio.music('title');
+    this.offline = AL.Meta.collectOffline();
     this.buildMenu();
   };
 
@@ -58,6 +63,7 @@ AL.Scenes = (function () {
       }
       else if (it.key === 'new') { AL.Save.reset(); AL.Game.startPlay(0); }
       else if (it.key === 'select') AL.Game.setScene(new Select());
+      else if (it.key === 'cache') AL.Game.setScene(new AL.Scenes.Cache({}));
       else if (it.key === 'credits') AL.Game.setScene(new Credits(false));
     }
     AL.Particles.update(dt);
@@ -175,7 +181,8 @@ AL.Scenes = (function () {
     // footer
     var save = AL.Save.get();
     var bits = [];
-    if (save.shards) bits.push(save.shards + ' EMBERLIGHT');
+    if (save.ember) bits.push((save.ember | 0).toLocaleString() + ' EMBERLIGHT');
+    if (save.earned) bits.push('RANK ' + AL.Meta.rank());
     var mc = 0; for (var kk in save.memories) if (save.memories[kk]) mc++;
     if (mc) bits.push(mc + '/' + AL.Story.memoryTotal + ' MEMORIES');
     if (save.time > 5) bits.push(fmtTime(save.time));
@@ -185,6 +192,10 @@ AL.Scenes = (function () {
     }
     D.text(g, (AL.Audio.isMuted() ? 'M SOUND OFF' : 'M SOUND ON') + '    F FULLSCREEN    V CRT',
            26, AL.H - 14, { size: 6, color: U.rgba(C.ash, 0.55), spacing: 1.4 });
+    if (this.offline && this.offline.amount > 0) {
+      D.text(g, 'YOUR POSTS GATHERED ' + this.offline.amount.toLocaleString() + ' WHILE YOU WERE AWAY',
+             26, AL.H - 44, { size: 6, color: U.rgba(C.plate, 0.8), spacing: 1.3 });
+    }
 
     if (!AL.Save.usable()) {
       D.text(g, 'PROGRESS CANNOT BE SAVED IN THIS BROWSER', 26, AL.H - 44,
@@ -244,19 +255,29 @@ AL.Scenes = (function () {
     var self = this;
     this.paused = false;
     this.pauseSel = 0;
+    this.started = false;
     this.world = new AL.World({
       onEnding: function (kind) { AL.Game.setScene(new Ending(kind, self.world)); },
-      onComplete: function () { AL.Game.setScene(new Ending('dark', self.world)); }
+      onComplete: function () { AL.Game.setScene(new Ending('dark', self.world)); },
+      // between levels, the Cache
+      onLevelComplete: function (summary) {
+        AL.Game.setScene(new AL.Scenes.Cache({ next: summary.next, summary: summary }));
+      }
     });
     this.startRoom = roomIndex || 0;
   }
 
   Play.prototype.enter = function () {
+    /* Idempotent: opening the Cache from the pause menu swaps scenes and comes
+     * back here, and re-entering must not restart the level under the player. */
+    if (this.started) return;
+    this.started = true;
     this.world.start(this.startRoom);
   };
 
   var PAUSE_ITEMS = [
     { key: 'resume', label: 'Resume' },
+    { key: 'cache', label: "The Warden's Cache" },
     { key: 'restart', label: 'Back to Checkpoint' },
     { key: 'sound', label: 'Sound' },
     { key: 'title', label: 'Abandon Descent' }
@@ -271,6 +292,12 @@ AL.Scenes = (function () {
         var k = PAUSE_ITEMS[this.pauseSel].key;
         AL.Audio.sfx('ui');
         if (k === 'resume') this.resume();
+        else if (k === 'cache') {
+          var back = this;
+          AL.Game.setScene(new AL.Scenes.Cache({
+            onLeave: function () { back.resume(); AL.Game.setScene(back); }
+          }));
+        }
         else if (k === 'restart') { this.world.restartRoom(); this.resume(); }
         else if (k === 'sound') AL.Audio.toggleMute();
         else if (k === 'title') { AL.Save.put(); AL.Game.setScene(new Title()); }

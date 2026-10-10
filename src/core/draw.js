@@ -107,6 +107,28 @@ AL.Draw = (function () {
     g.fillRect(x - r, y - r, r * 2, r * 2);
   }
 
+  /* The emberlight mark. Small enough for the HUD, and unmistakably a gem
+   * rather than the plus sign a cross of rectangles reads as. */
+  function ember(g, cx, cy, color, scale) {
+    var k = scale || 1;
+    g.fillStyle = color;
+    if (k >= 2) {
+      g.fillRect(cx, cy - 4, 2, 1);
+      g.fillRect(cx - 1, cy - 3, 4, 1);
+      g.fillRect(cx - 2, cy - 2, 6, 2);
+      g.fillRect(cx - 3, cy, 8, 1);
+      g.fillRect(cx - 2, cy + 1, 6, 2);
+      g.fillRect(cx - 1, cy + 3, 4, 1);
+      g.fillRect(cx, cy + 4, 2, 1);
+    } else {
+      g.fillRect(cx, cy - 2, 1, 1);
+      g.fillRect(cx - 1, cy - 1, 3, 1);
+      g.fillRect(cx - 2, cy, 5, 1);
+      g.fillRect(cx - 1, cy + 1, 3, 1);
+      g.fillRect(cx, cy + 2, 1, 1);
+    }
+  }
+
   /* ---------------------------------------------------------- light layer */
 
   /* Darkness is a full-screen wash with holes punched out of it. `lights` is a
@@ -204,7 +226,7 @@ AL.Draw = (function () {
 
   return {
     text: text, textWidth: textWidth, wrap: wrap, font: font,
-    rect: rect, frame: frame, panel: panel, radial: radial,
+    rect: rect, frame: frame, panel: panel, radial: radial, ember: ember,
     lights: lights, bloom: bloom,
     vignette: vignette, fade: fade, letterbox: letterbox, iris: iris,
     scanTear: scanTear

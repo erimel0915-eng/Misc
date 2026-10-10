@@ -90,7 +90,7 @@ AL.Echo = (function () {
     var a = this.born * (this.dying > 0 ? this.dying / 0.35 : 1);
     out.push({
       wx: this.x + this.w / 2, wy: this.y + this.h / 2,
-      r: (lit ? 74 : 22) * a,
+      r: (lit ? 74 * AL.Meta.echoLightScale() : 22) * a,
       color: lit ? C.echo : C.echoDim,
       intensity: (lit ? 0.3 : 0.12) * a,
       reveals: lit
