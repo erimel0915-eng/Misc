@@ -226,6 +226,7 @@ AL.Entities = (function () {
     this.on = false; this.press = 0;
     this.color = chan === 'A' ? C.plate : (chan === 'B' ? C.echo : C.iris);
   }
+  Plate.prototype.reset = function () { this.on = false; this.press = 0; };
   Plate.prototype.sensor = function () { return { x: this.x + 1, y: this.y + 6, w: T - 2, h: 10 }; };
   Plate.prototype.update = function (dt, world) {
     var s = this.sensor();
@@ -285,6 +286,7 @@ AL.Entities = (function () {
     // live for one frame before anything has computed where it reaches.
     this.active = false;
   }
+  Laser.prototype.reset = function () { this.t = this.cfg.phase || 0; this.len = 0; };
   Laser.prototype.origin = function () {
     return { x: this.x + T / 2 + this.dx * 5, y: this.y + T / 2 + this.dy * 5 };
   };
@@ -386,12 +388,18 @@ AL.Entities = (function () {
     this.dx = (cfg.dx || 0) * T;
     this.dy = (cfg.dy || 0) * T;
     this.dur = cfg.dur || 2.4;
-    this.t = (cfg.phase || 0) * this.dur;
+    this.phase0 = (cfg.phase || 0) * this.dur;
+    this.t = this.phase0;
     this.chan = cfg.chan || null;
     this.invert = !!cfg.invert;
     this.solid = true;
     this.ease = cfg.ease !== false;
   }
+  Mover.prototype.reset = function () {
+    this.t = this.phase0;
+    this.x = this.ox; this.y = this.oy;
+    this.px = this.x; this.py = this.y;
+  };
   Mover.prototype.update = function (dt, world) {
     this.px = this.x; this.py = this.y;
     var moving = true;
@@ -616,6 +624,72 @@ AL.Entities = (function () {
     g.restore();
   };
 
+  /* ----------------------------------------------------------- Checkpoint */
+
+  /* A brazier. Walking past it lights it, and dying sends you back here
+   * instead of to the top of the level. */
+  function Checkpoint(x, y) {
+    this.x = x; this.y = y;
+    this.t = Math.random() * 6;
+    this.lit = 0;
+    this.on = false;
+  }
+  Checkpoint.prototype.reset = function () { /* stays lit through a death */ };
+  Checkpoint.prototype.update = function (dt, world) {
+    this.t += dt;
+    this.lit = U.approach(this.lit, this.on ? 1 : 0, dt * 3);
+    var p = world.player;
+    if (!p || p.dead) return;
+    if (!U.rectsOverlap(p.x, p.y, p.w, p.h, this.x - 4, this.y - 10, T + 8, T + 12)) return;
+
+    // claim it for the whole group — only one checkpoint is ever current
+    if (!this.on) {
+      var ents = world.level.entities;
+      for (var i = 0; i < ents.length; i++) {
+        if (ents[i] instanceof Checkpoint) ents[i].on = false;
+      }
+      this.on = true;
+    }
+    if (world.setCheckpoint(this.x + T / 2, this.y + T)) {
+      AL.Audio.sfx('shard', 2);
+      AL.FX.addFlash(0.12, C.ember);
+      AL.Particles.ring(this.x + T / 2, this.y + 6, C.ember, 34, 0.6, 2);
+      AL.Particles.burst(this.x + T / 2, this.y + 6, C.emberHot, 14, 70, { life: 0.7, grav: -40 });
+      world.toast = { t: 0, text: 'THE ASH REMEMBERS THIS PLACE', color: C.ember };
+    }
+  };
+  Checkpoint.prototype.lights = function (out) {
+    out.push({ wx: this.x + T / 2, wy: this.y + 4, r: 30 + this.lit * 46,
+               color: C.ember, intensity: 0.1 + this.lit * 0.24, reveals: false });
+  };
+  Checkpoint.prototype.draw = function (g) {
+    var x = this.x, y = this.y;
+    g.fillStyle = C.stone2;
+    g.fillRect(x + 4, y + 8, 8, 8);
+    g.fillRect(x + 2, y + 14, 12, 2);
+    g.fillStyle = U.rgba(C.void0, 0.6);
+    g.fillRect(x + 6, y + 10, 4, 4);
+    if (this.lit < 0.05) {
+      g.fillStyle = U.rgba(C.ashDim, 0.5);
+      g.fillRect(x + 6, y + 6, 4, 2);
+      return;
+    }
+    var fl = 1 + Math.sin(this.t * 8.1) * 0.14 + Math.sin(this.t * 3.3) * 0.1;
+    var h = Math.round((6 + Math.sin(this.t * 6) * 2) * this.lit * fl);
+    g.fillStyle = C.ember;
+    g.fillRect(x + 5, y + 8 - h, 6, h);
+    g.fillStyle = C.emberHot;
+    g.fillRect(x + 7, y + 8 - Math.round(h * 0.7), 2, Math.round(h * 0.7));
+    g.save();
+    g.globalCompositeOperation = 'lighter';
+    AL.Draw.radial(g, x + T / 2, y + 4, 22 * this.lit * fl, C.ember, 0.45 * this.lit, 0);
+    g.restore();
+    if (Math.random() < 0.3 * this.lit) {
+      AL.Particles.spawn({ x: x + T / 2 + U.rand(-2, 2), y: y + 4,
+        vx: U.rand(-5, 5), vy: U.rand(-28, -10), life: U.rand(0.4, 1.0), size: 1, color: C.ember });
+    }
+  };
+
   /* ----------------------------------------------------------------- Iris */
 
   /* The Lumen herself. Not a puzzle piece — a destination. */
@@ -677,6 +751,7 @@ AL.Entities = (function () {
 
   return {
     Shard: Shard, Mote: Mote, Exit: Exit, Lamp: Lamp, Plate: Plate,
-    Laser: Laser, Mover: Mover, Shade: Shade, Rune: Rune, Altar: Altar, Iris: Iris
+    Laser: Laser, Mover: Mover, Shade: Shade, Rune: Rune, Altar: Altar,
+    Checkpoint: Checkpoint, Iris: Iris
   };
 })();

@@ -11,7 +11,7 @@ const SUITES = [
   ['sim.js',        'engine, echoes, hazards, dialogue, endings, menus'],
   ['puzzles.js',    'the jump ladder and the first Echo puzzle'],
   ['solve-cut.js',  'the laser corridor, solved the intended way'],
-  ['playthrough.js','all 26 rooms, start to ending'],
+  ['playthrough.js','every level, start to ending'],
 ];
 
 let failed = [];

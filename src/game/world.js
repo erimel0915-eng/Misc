@@ -15,6 +15,8 @@ AL.World = (function () {
     this.roomIndex = 0;
     this.level = null;
     this.player = null;
+    this.cam = new AL.Camera();
+    this.respawn = { x: 0, y: 0 };
     this.echoes = [];
     this.recorder = new AL.Echo.Recorder();
 
@@ -82,7 +84,10 @@ AL.World = (function () {
     this.deathWait = 0;
 
     this.level = new AL.Level(def, this);
-    this.player = new AL.Player(this.level.spawn.x, this.level.spawn.y);
+    this.respawn = { x: this.level.spawn.x, y: this.level.spawn.y };
+    this.player = new AL.Player(this.respawn.x, this.respawn.y);
+    this.cam.focus(this.level, this.player.x + this.player.w / 2,
+                               this.player.y + this.player.h / 2);
     this.ashSeed = def.id ? def.id.length * 977 : 101;
 
     if (def.chamber !== this.chamber) {
@@ -108,26 +113,34 @@ AL.World = (function () {
     this.level.rebuild(this);
   };
 
+  /* Levels are long now, so dying rolls you back to the last checkpoint
+   * rather than to the top. Emberlight and memories you already took stay
+   * taken; everything that moves goes back to where it started. */
   World.prototype.restartRoom = function () {
-    var keepChamber = this.chamber;
-    this.chamber = keepChamber;   // don't re-announce the chamber on a retry
-    var def = AL.Levels.rooms[this.roomIndex];
     this.echoes.length = 0;
     this.recorder.cancel();
     this.powerNow = {}; this.powerState = {};
-    this.roomShards = 0;
     this.deathWait = 0;
-    this.level = new AL.Level(def, this);
-    this.player = new AL.Player(this.level.spawn.x, this.level.spawn.y);
-    // runes and altars already consumed stay consumed
-    for (var i = 0; i < this.level.entities.length; i++) {
-      var e = this.level.entities[i];
-      if (e instanceof AL.Entities.Rune && e.key && this.save.seenRunes[e.key]) e.fired = true;
+
+    this.level.reset();
+    var ents = this.level.entities;
+    for (var i = 0; i < ents.length; i++) {
+      if (ents[i].reset) ents[i].reset();
     }
+
+    this.player = new AL.Player(this.respawn.x, this.respawn.y);
+    this.cam.focus(this.level, this.player.x + this.player.w / 2,
+                               this.player.y + this.player.h / 2);
     this.rebuildBodies();
     this.gatherLights();
     this.level.applyLight(this.lights);
     this.level.rebuild(this);
+  };
+
+  World.prototype.setCheckpoint = function (x, y) {
+    if (Math.abs(this.respawn.x - x) < 2 && Math.abs(this.respawn.y - y) < 2) return false;
+    this.respawn = { x: x, y: y };
+    return true;
   };
 
   World.prototype.exitRoom = function () {
@@ -431,6 +444,7 @@ AL.World = (function () {
         if (this.recorder.full()) this.releaseEcho();
       }
     }
+    this.cam.update(dt, this.level, this.player);
 
     /* ---- input: echo + reset ---- */
     if (this.acceptsInput()) {
@@ -465,7 +479,8 @@ AL.World = (function () {
     while (this._ashAcc >= 1) {
       this._ashAcc -= 1;
       AL.Particles.spawn({
-        x: U.rand(-10, AL.W + 10), y: -6,
+        x: this.cam.renderX() + U.rand(-10, AL.W + 10),
+        y: this.cam.renderY() - 6,
         vx: U.rand(-6, 10), vy: U.rand(8, 26),
         life: U.rand(5, 12), size: 1, color: Math.random() < 0.2 ? C.ash : C.ashDim,
         kind: 'ash', a0: U.rand(0.25, 0.7)
@@ -480,20 +495,28 @@ AL.World = (function () {
     if (!lv) return;
 
     var sh = AL.FX.offset();
+    var cx = this.cam.renderX(), cy = this.cam.renderY();
+
+    // Sky and distant ruin are drawn in screen space; they parallax themselves.
     g.save();
     g.translate(sh.x, sh.y);
+    lv.drawBackground(g, this, this.cam);
+    g.restore();
 
-    lv.drawBackground(g, this);
+    // Everything else lives in world space.
+    g.save();
+    g.translate(-cx + sh.x, -cy + sh.y);
+
     AL.Particles.draw(g, 0, 0);
-    lv.draw(g, this);
+    lv.draw(g, this, this.cam);
 
-    // entities behind the actors
     var ents = lv.entities;
     for (var i = 0; i < ents.length; i++) {
       var e = ents[i];
       if (e instanceof AL.Entities.Exit || e instanceof AL.Entities.Plate ||
           e instanceof AL.Entities.Rune || e instanceof AL.Entities.Lamp ||
-          e instanceof AL.Entities.Altar || e instanceof AL.Entities.Iris) e.draw(g, this);
+          e instanceof AL.Entities.Altar || e instanceof AL.Entities.Iris ||
+          e instanceof AL.Entities.Checkpoint) e.draw(g, this);
     }
     for (var k = 0; k < this.echoes.length; k++) this.echoes[k].draw(g, this);
     for (var m = 0; m < ents.length; m++) {
@@ -505,12 +528,18 @@ AL.World = (function () {
     this.recorder.draw(g);
     if (this.player) this.player.draw(g, this);
 
-    // darkness, then the warm bloom back over the top of it
-    var strength = lv.dark;
-    if (strength > 0.02) AL.Draw.lights(g, this.lights.map(toScreen), strength, C.void0);
-    AL.Draw.bloom(g, this.lights.map(toScreen));
-
     g.restore();
+
+    /* The darkness pass is a full-screen overlay, so it has to happen outside
+     * the world transform with every light converted to screen space. */
+    var self = this;
+    function toScreen(L) {
+      return { x: L.wx - cx + sh.x, y: L.wy - cy + sh.y, r: L.r,
+               color: L.color, intensity: L.intensity, soft: L.soft };
+    }
+    var screenLights = this.lights.map(toScreen);
+    if (lv.dark > 0.02) AL.Draw.lights(g, screenLights, lv.dark, C.void0);
+    AL.Draw.bloom(g, screenLights);
 
     AL.Draw.vignette(g, 0.26 + lv.dark * 0.18);
     this.drawHUD(g);
@@ -519,17 +548,13 @@ AL.World = (function () {
       var tr = this.transition;
       var t = tr.t / tr.dur;
       var a = t < 0.5 ? U.easeIn(t * 2) : U.easeOut(1 - (t - 0.5) * 2);
-      AL.Draw.iris(g, 1 - a, tr.cx, tr.cy);
+      AL.Draw.iris(g, 1 - a, tr.cx - cx, tr.cy - cy);
     }
     if (AL.FX.flash > 0.01) AL.Draw.fade(g, AL.FX.flash * 0.7, AL.FX.flashColor);
     if (AL.FX.chroma > 0.01) AL.Draw.scanTear(g, AL.FX.chroma);
 
     if (AL.Dialogue.active) AL.Dialogue.draw(g);
   };
-
-  function toScreen(L) {
-    return { x: L.wx, y: L.wy, r: L.r, color: L.color, intensity: L.intensity, soft: L.soft };
-  }
 
   /* ------------------------------------------------------------------ HUD */
 

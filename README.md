@@ -35,7 +35,7 @@ The last room asks it one more time, and means it.
 | **X** | start recording · press again to release the Echo · recalls when you're at capacity |
 | **C** | dash *(once you've found it)* |
 | **Q** | recall every Echo |
-| **R** | restart the room — free, instant, use it constantly |
+| **R** | back to the last checkpoint — free, instant, use it constantly |
 | **Esc** | pause |
 | **M** / **F** / **V** | sound · fullscreen · CRT filter |
 
@@ -43,13 +43,16 @@ A gamepad works too.
 
 ## What's in it
 
-- **26 hand-built rooms** across **7 chambers**, each one screen, each with a
-  restart that costs you nothing.
+- **Eight levels** across **7 chambers**. Most are walked left to right and run
+  three to six screens wide; chamber II is a shaft you climb down, and chamber
+  V is a dark hall you climb up. The camera follows, and lit braziers along the
+  way are checkpoints — dying costs you the walk back, not the level.
 - **Six abilities** found on altars: the Echo itself, a second Echo, a longer
   breath, the Ashstep dash, Lightwake, and finally the Choir — three of you at
   once.
-- **62 Emberlight** to gather (a room's door opens when you've taken all of its)
-  and **9 Memory Motes** hidden off the critical path.
+- **24 Emberlight** to gather — a level's door opens only when you have all of
+  that level's — and **9 Memory Motes** hidden off the critical path, most of
+  them behind something an Echo has to solve.
 - **Three endings.** Two are always on the table. The third only becomes
   possible if you found all nine memories, and it is the one the game is
   actually about.
@@ -81,8 +84,9 @@ src/
 
 ### Level design, in brief
 
-Rooms are 30×17 ASCII grids (see the legend at the top of `src/data/levels.js`).
-They're laid out against measured jump arcs rather than guesswork:
+Levels are ASCII grids of whatever size they were authored at (see the legend
+at the top of `src/data/levels.js`); the camera scrolls to fit. They're laid
+out against measured jump arcs rather than guesswork:
 
 | from | you can reach |
 |---|---|
@@ -90,9 +94,13 @@ They're laid out against measured jump arcs rather than guesswork:
 | an Echo standing on that surface | 4 tiles up |
 | riding an Echo's jump | 7 tiles up |
 
-...with a 4-tile horizontal maximum. Rooms whose *required* path deliberately
-breaks the 3-tile rule declare `assist: 'step'` or `assist: 'ride'`; optional
-memory motes are allowed to demand an Echo anywhere.
+...with a 4-tile horizontal maximum, or about 9 with the Ashstep. Levels whose
+*required* path deliberately breaks the 3-tile rule declare `assist: 'step'` or
+`assist: 'ride'`; optional memory motes may demand an Echo anywhere.
+
+At 100 columns a miscount is invisible, so the maps are generated from a
+declarative spec — but what lands in `levels.js` is plain ASCII you can edit by
+hand.
 
 ## Tests
 

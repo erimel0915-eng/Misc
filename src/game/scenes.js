@@ -255,7 +255,7 @@ AL.Scenes = (function () {
 
   var PAUSE_ITEMS = [
     { key: 'resume', label: 'Resume' },
-    { key: 'restart', label: 'Restart Room' },
+    { key: 'restart', label: 'Back to Checkpoint' },
     { key: 'sound', label: 'Sound' },
     { key: 'title', label: 'Abandon Descent' }
   ];
@@ -318,7 +318,7 @@ AL.Scenes = (function () {
     var w = this.world;
     D.text(g, 'ARROWS MOVE   Z JUMP   X ECHO' + (w.hasAbility('dash') ? '   C DASH' : ''),
            AL.W / 2, AL.H - 34, { size: 6, align: 'center', color: U.rgba(C.ashDim, 0.55), spacing: 1.5 });
-    D.text(g, 'Q RECALL ECHOES   R RESTART ROOM', AL.W / 2, AL.H - 24,
+    D.text(g, 'Q RECALL ECHOES   R BACK TO CHECKPOINT', AL.W / 2, AL.H - 24,
            { size: 6, align: 'center', color: U.rgba(C.ashDim, 0.55), spacing: 1.5 });
     D.text(g, 'DEATHS ' + (w.save.deaths | 0) + '   ECHOES ' + (w.save.echoesMade | 0) +
               '   ' + fmtTime(w.save.time),

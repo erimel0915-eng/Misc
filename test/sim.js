@@ -93,10 +93,10 @@ for (let i = 0; i < AL.Levels.rooms.length; i++) {
 section('Echo: record, release, solidity, plate, loop determinism');
 {
   const w = freshWorld({ allAbilities: true });
-  w.start(2);                                   // c1r3 "Weight"
+  w.start(0);                                   // c1, which has the first plate
   while (AL.Dialogue.active) { tap('Enter'); stepWorld(w, 1); releaseAll(); }
   const plate = w.level.entities.find(e => e instanceof AL.Entities.Plate);
-  ok('c1r3 has a plate', !!plate);
+  ok('c1 has a plate', !!plate);
 
   // walk onto the plate, reading whatever the walls have to say on the way
   const target = plate.x + 3;
@@ -194,7 +194,10 @@ section('Echo: capacity, and X recalls when full');
 section('Echo: a rising Echo carries the player upward');
 {
   const w = freshWorld({ allAbilities: true });
-  w.start(5);                                   // c2r2 "Rise"
+  w.start(0);                                   // c1 — wide, with sky above it
+  // stand somewhere with real headroom
+  w.player.x = 46 * 16; w.player.y = 14 * 16 - w.player.h; w.player.spawnT = 0;
+  stepWorld(w, 20);
   while (AL.Dialogue.active) { tap('Enter'); stepWorld(w, 1); releaseAll(); }
   stepWorld(w, 30);
   const startY = w.player.y;
@@ -230,10 +233,10 @@ section('Echo: a rising Echo carries the player upward');
 section('hazards');
 {
   const w = freshWorld({ allAbilities: true });
-  w.start(13);                                  // c4r2 "Cut" — has a laser
+  w.start(3);                                   // c4 — has lasers
   while (AL.Dialogue.active) { tap('Enter'); stepWorld(w, 1); releaseAll(); }
   const laser = w.level.entities.find(e => e instanceof AL.Entities.Laser);
-  ok('c4r2 has a laser', !!laser);
+  ok('c4 has a laser', !!laser);
   // it pulses, and starts asleep — wait for it to wake
   let lg = 0;
   do { stepWorld(w, 1); } while (!laser.active && lg++ < 900);
@@ -286,11 +289,11 @@ section('room completion -> next room');
 section('chamber 7 opens immediately (no emberlight required)');
 {
   const w = freshWorld({ allAbilities: true });
-  const i = AL.Levels.rooms.findIndex(r => r.id === 'c7r1');
+  const i = AL.Levels.rooms.findIndex(r => r.id === 'c7a');
   w.start(i);
   while (AL.Dialogue.active) { tap('Enter'); stepWorld(w, 1); releaseAll(); }
-  ok('c7r1 needs no emberlight', w.level.requiredShards === 0);
-  ok('c7r1 is cleared on arrival', w.roomCleared());
+  ok('c7a needs no emberlight', w.level.requiredShards === 0);
+  ok('c7a is cleared on arrival', w.roomCleared());
 }
 
 /* -------------------------------------------------- 5. every script runs */
@@ -341,7 +344,7 @@ section('memory scripts run');
 section('finale choice gating');
 function runFinale(allMemories) {
   const w = freshWorld({ allAbilities: true });
-  w.start(AL.Levels.rooms.findIndex(r => r.id === 'c7r2'));
+  w.start(AL.Levels.rooms.findIndex(r => r.id === 'c7b'));
   if (allMemories) {
     for (let i = 0; i < AL.Story.memoryTotal; i++) w.save.memories['x' + i] = true;
   }
@@ -401,14 +404,14 @@ section('title / select / pause / credits render and navigate');
     stepScene(t, 10, () => {}); t.draw(g);
     ok('title has a menu', t.items.length >= 2);
 
-    const s = AL.Save.get(); s.started = true; s.room = 20; s.shards = 30; AL.Save.put();
+    const s = AL.Save.get(); s.started = true; s.room = 5; s.shards = 30; AL.Save.put();
     const t2 = new AL.Scenes.Title(); t2.enter(); t2.draw(g);
     ok('title offers Continue once there is progress', t2.items.some(i => i.key === 'continue'));
     ok('title offers Chamber Select once there is progress', t2.items.some(i => i.key === 'select'));
 
     const sel = new AL.Scenes.Select(); sel.enter();
     stepScene(sel, 10); sel.draw(g);
-    ok('chamber select lists unlocked chambers', sel.max >= 6, 'max=' + sel.max);
+    ok('chamber select lists unlocked chambers', sel.max >= 5, 'max=' + sel.max);
 
     const p = new AL.Scenes.Play(0); p.enter();
     stepScene(p, 400, (f) => { if (AL.Dialogue.active && f % 3 === 0) tap('Enter'); releaseAll(); });
@@ -431,8 +434,8 @@ section('save data');
 {
   AL.Save.reset();
   const s = AL.Save.get();
-  s.room = 7; s.shards = 11; s.memories['a'] = true; AL.Save.put();
-  ok('save round-trips', AL.Save.get().room === 7 && AL.Save.get().shards === 11);
+  s.room = 3; s.shards = 11; s.memories['a'] = true; AL.Save.put();
+  ok('save round-trips', AL.Save.get().room === 3 && AL.Save.get().shards === 11);
   ok('hasRun true after progress', AL.Save.hasRun() === false || true);
   const w = freshWorld();
   w.start(0);
@@ -444,7 +447,7 @@ section('save data');
 /* --------------------------------------- 9. altars actually grant things */
 section('altars grant their abilities');
 {
-  const expect = { c1r2: 'echo', c2r2: 'twin', c3r1: 'longbreath', c4r1: 'dash', c5r1: 'lightwake', c6r1: 'choir' };
+  const expect = { c1: 'echo', c2: 'twin', c3: 'longbreath', c4: 'dash', c5: 'lightwake', c6: 'choir' };
   for (const [id, ability] of Object.entries(expect)) {
     const w = freshWorld();
     const i = AL.Levels.rooms.findIndex(r => r.id === id);
@@ -454,14 +457,27 @@ section('altars grant their abilities');
     ok(id + ' has an altar', !!altar);
     if (!altar) continue;
     // walk to it
+    // Walk at it. Levels that descend need more than a walk, and a
+    // pathfinder is not what this test is for — connectivity is the
+    // validator's job — so fall back to standing on it directly.
     let guard = 0;
-    while (!w.hasAbility(ability) && guard++ < 900) {
+    while (!w.hasAbility(ability) && guard++ < 1500) {
       releaseAll();
+      if (AL.Dialogue.active) { tap('Enter'); stepWorld(w, 1); continue; }
       hold(w.player.x < altar.x ? 'ArrowRight' : 'ArrowLeft', true);
       stepWorld(w, 1);
-      if (AL.Dialogue.active) tap('Enter');
     }
     releaseAll();
+    if (!w.hasAbility(ability)) {
+      w.player.dead = false;
+      w.player.x = altar.x; w.player.y = altar.y - w.player.h + 4;
+      w.player.spawnT = 0;
+      let g2 = 0;
+      while (!w.hasAbility(ability) && g2++ < 200) {
+        stepWorld(w, 1);
+        if (AL.Dialogue.active) { tap('Enter'); stepWorld(w, 1); releaseAll(); }
+      }
+    }
     ok(id + ' grants "' + ability + '"', w.hasAbility(ability));
   }
 }

@@ -186,7 +186,7 @@ AL.Player = (function () {
     /* ---- hazards ---- */
     var lv = world.level;
     if (lv.rectHazard(this.x + 1, this.y + 1, this.w - 2, this.h - 2)) this.kill('spike');
-    if (this.y > AL.H + 40) this.kill('fall');
+    if (this.y > world.level.heightPx + 40) this.kill('fall');
     if (this.grounded) lv.touchCrumble(this.x, this.w, this.y + this.h, dt);
 
     /* ---- running dust + scarf ---- */

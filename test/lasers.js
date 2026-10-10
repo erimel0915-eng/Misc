@@ -13,8 +13,9 @@ let problems = 0;
 for (const r of AL.Levels.rooms) {
   const lasers = [];
   let li = 0;
+  const W = r.map[0].length, H = r.map.length;
   r.map.forEach((row, y) => {
-    for (let x = 0; x < 30; x++) {
+    for (let x = 0; x < W; x++) {
       if (!'rldu'.includes(row[x])) continue;
       const cfg = ((r.cfg && r.cfg.lasers) || [])[li++] || {};
       lasers.push({ x, y, dir: row[x], cfg });
@@ -27,9 +28,9 @@ for (const r of AL.Levels.rooms) {
     const permanent = !L.cfg.blink && !L.cfg.chan;
     const by = L.y * 16 + 8;
     // march the beam through static geometry
-    let endX = L.dir === 'r' ? 29 : 0;
+    let endX = L.dir === 'r' ? W - 1 : 0;
     if (L.dir === 'r') {
-      for (let x = L.x + 1; x < 30; x++) { if (SOLID.has(r.map[L.y][x])) { endX = x; break; } }
+      for (let x = L.x + 1; x < W; x++) { if (SOLID.has(r.map[L.y][x])) { endX = x; break; } }
     } else if (L.dir === 'l') {
       for (let x = L.x - 1; x >= 0; x--) { if (SOLID.has(r.map[L.y][x])) { endX = x; break; } }
     }
@@ -37,11 +38,11 @@ for (const r of AL.Levels.rooms) {
 
     // which surfaces does it make lethal, and is any part of each left safe?
     const hit = [];
-    for (let sy = 0; sy < 17; sy++) {
+    for (let sy = 0; sy < H; sy++) {
       const feet = sy * 16, head = feet - 14;
       if (!(by >= head && by <= feet)) continue;     // beam crosses a body stood here
       let total = 0, safe = 0;
-      for (let sx = 1; sx < 29; sx++) {
+      for (let sx = 1; sx < W - 1; sx++) {
         if (!STAND.has(r.map[sy][sx])) continue;
         if (sy > 0 && SOLID.has(r.map[sy - 1][sx])) continue;
         total++;

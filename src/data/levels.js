@@ -1,9 +1,14 @@
-/* Room data.
+/* Level data.
  *
- * Each room is 30x17 tiles — exactly one screen. Maps are written WITHOUT
- * padding and are BOTTOM-ALIGNED by `frame()`, so the last authored rows are
- * the floor and a hole in them is a hole in the world. `frame()` also seals
- * the ceiling and both side walls, so a room can never leak.
+ * A level is as large as it was authored; the camera scrolls to fit. Some run
+ * wide and are walked left to right, one runs as a shaft and is climbed down.
+ * Maps are written WITHOUT padding and are BOTTOM-ALIGNED by `frame()`, so the
+ * last authored rows are the floor and a hole in them is a hole in the world.
+ * `frame()` seals the ceiling and both side walls, so a level cannot leak.
+ *
+ * These maps are generated from a declarative spec rather than counted out by
+ * hand — at 100 columns a miscount is invisible — but what lands here is plain
+ * ASCII and can be edited directly.
  *
  * LEGEND
  *   space .  empty            #  stone              -  one-way platform
@@ -16,7 +21,7 @@
  *   E F    gates: solid WHILE channel A / B is powered  (switchable bridges)
  *   r l d u  laser emitters, facing right/left/down/up
  *   M  moving platform        S  shade              R  rune (story)
- *   T  altar (ability)        W  Iris
+ *   T  altar (ability)        K  checkpoint        W  Iris
  *
  * THE VERTICAL VOCABULARY, measured off the actual jump arc:
  *   from any surface                -> a surface 3 rows higher is reachable
@@ -35,19 +40,30 @@
  */
 AL.Levels = (function () {
 
-  var PAD = '                              ';   // 30 spaces
+  function spaces(n) { return new Array(n + 1).join(' '); }
 
-  // Bottom-align the authored rows, pad to 30 columns, seal the shell.
+  /* Bottom-align the authored rows, pad every row to the level's width, and
+   * seal the shell. A level is as wide and as tall as it was written: 30x17
+   * is simply the one-screen case, and anything larger scrolls. */
   function frame(rows) {
+    var cols = AL.COLS, i;
+    for (i = 0; i < rows.length; i++) {
+      if (rows[i] && rows[i].length > cols) cols = rows[i].length;
+    }
+    /* Always leave one row for the sealed ceiling, so authored row i lands on
+     * grid row i+1 at every level height. Without the +1, a level taller than
+     * one screen had its first authored row overwritten by the ceiling. */
+    var total = Math.max(AL.ROWS, rows.length + 1);
+    var off = total - rows.length;               // push content to the floor
+    var pad = spaces(cols);
     var out = [];
-    var off = AL.ROWS - rows.length;             // push content to the floor
-    for (var y = 0; y < AL.ROWS; y++) {
+    for (var y = 0; y < total; y++) {
       var src = y - off;
-      var s = ((src >= 0 && rows[src] != null) ? rows[src] : '') + PAD;
-      var a = s.slice(0, AL.COLS).split('');
-      if (y === 0) { for (var x = 0; x < AL.COLS; x++) a[x] = '#'; }
+      var line = ((src >= 0 && rows[src] != null) ? rows[src] : '') + pad;
+      var a = line.slice(0, cols).split('');
+      if (y === 0) { for (var x = 0; x < cols; x++) a[x] = '#'; }
       a[0] = '#';
-      a[AL.COLS - 1] = '#';
+      a[cols - 1] = '#';
       out.push(a.join(''));
     }
     return out;
@@ -59,607 +75,222 @@ AL.Levels = (function () {
 
   var rooms = [
 
-  /* ================================================================= I === */
-  /* THE WAKING SHELF — learn to move, then learn that what you leave behind
-     can hold a door open.                                                   */
-
-  R({ id: 'c1r1', chamber: 1, name: 'First Light', dark: 0.08,
-      onEnter: 'prologue',
-      hint: 'ARROWS MOVE  ·  Z JUMPS',
-      cfg: { runes: [{ key: 'rune_ash' }] },
+  R({ id: 'c1', chamber: 1, name: 'The Waking Shelf', dark: 0.10,
+      assist: 'step', onEnter: 'prologue', hint: 'ARROWS MOVE  \u00B7  Z JUMPS',
+      cfg: {
+        runes: [{ key: 'rune_ash' }, { key: 'rune_glove' }, { key: 'rune_weight' }, { key: 'rune_shelf' }],
+        altars: [{ ability: 'echo', script: 'get_echo' }]
+      },
       map: [
-        '',
-        '  +                       +   ',
-        '',
-        '',
-        '',
-        '',
-        '',
-        '                 *            ',
-        '              ######          ',
-        '',
-        '         *                    ',
-        '      ######                  ',
-        '',
-        ' P  R                     X   ',
-        G, G
+        '                                                   A',
+        '   +                      +                       +A                  +',
+        '                                                   A',
+        '                                                   A',
+        '                       o                           A',
+        '                    #######                        A',
+        '                                                   A                 o',
+        '              *                                    A              #######',
+        '            ######                                 A',
+        '                                *                  A',
+        '       *                    ##########             A',
+        '     ######                                        A        ######',
+        '                                                   A',
+        '  P R              K  T  R              K  R a     A      *   K    R      X',
+        ' ####################################################   ######################',
+        ' ####################################################   #####################',
       ] }),
 
-  R({ id: 'c1r2', chamber: 1, name: "The Warden's Glove", dark: 0.10,
-      assist: 'step',
-      hint: 'X RECORDS  ·  X AGAIN RELEASES  ·  STAND ON YOURSELF',
+  R({ id: 'c2', chamber: 2, name: 'The Hollow Stair', dark: 0.20,
+      assist: 'ride', onEnter: 'ch2_open', hint: 'THE WAY IS DOWN',
       cfg: {
-        altars: [{ ability: 'echo', script: 'get_echo' }],
-        runes: [{ key: 'rune_glove' }]
+        runes: [{ key: 'rune_bridge' }, { key: 'rune_counter' }, { key: 'rune_rise' }, { key: 'rune_hold' }],
+        altars: [{ ability: 'twin', script: 'get_twin' }]
       },
       map: [
         '',
-        '   +                      +   ',
+        '   +      *',
+        '         ####',
+        '',
+        '   P  R',
+        ' #############',
+        '                        K    *',
+        '                   ##############',
+        '',
+        '',
+        '      T    R',
+        '  ##############',
+        '',
+        '                             +',
+        '                       a      K###',
+        '                   ##############',
         '',
         '',
         '',
+        ' AAAAAAAAAAAAAAAAAAAAAAAAAAoAAAAA',
+        '                        #######',
+        '',
+        '        *  ^^^^',
+        '   ##############',
+        '',
+        '',
+        '                      K     R',
+        '   + o            ##############',
+        '  #######',
+        '',
+        '       *',
+        '  #############',
+        '',
+        '',
+        '                    ^^^^^    *',
+        '                 ################',
+        '',
+        '',
+        '     K',
+        ' ############',
+        '',
+        '                             +',
+        '                        *',
+        '                #################',
         '',
         '',
         '',
-        '',
-        '          *                   ',
-        '      ##########              ',
-        '',
-        '',
-        ' P   T            R       X   ',
-        G, G
+        '     R                      X',
+        ' ################################',
+        ' ################################',
       ] }),
 
-  R({ id: 'c1r3', chamber: 1, name: 'Weight', dark: 0.12,
-      hint: 'SOMETHING MUST STAND ON THE PLATE',
-      cfg: { runes: [{ key: 'rune_weight' }] },
-      map: [
-        '              A               ',
-        '  +           A            +  ',
-        '              A               ',
-        '              A               ',
-        '              A               ',
-        '              A               ',
-        '         o    A               ',
-        '       #####  A               ',
-        '              A               ',
-        '              A               ',
-        '              A    *          ',
-        '   #####      A   ####        ',
-        '              A               ',
-        ' P R a        A       *   X   ',
-        G, G
-      ] }),
-
-  R({ id: 'c1r4', chamber: 1, name: 'The Shelf', dark: 0.14,
-      cfg: { runes: [{ key: 'rune_shelf' }] },
-      map: [
-        '                   A          ',
-        '  +                A       +  ',
-        '                   A          ',
-        '                   A          ',
-        '            *      A          ',
-        '          ######   A          ',
-        '                   A          ',
-        '      *            A          ',
-        '    ######         A          ',
-        '                   A          ',
-        '                   A          ',
-        '         #####     A          ',
-        '                   A          ',
-        ' P   a     R       A    *  X  ',
-        G, G
-      ] }),
-
-  /* ================================================================ II === */
-  /* THE HOLLOW STAIR — two of you at once, and the discovery that an Echo
-     mid-jump will carry you up with it.                                     */
-
-  R({ id: 'c2r1', chamber: 2, name: 'The Hollow Stair', dark: 0.18,
-      onEnter: 'ch2_open',
-      hint: 'THE BRIDGE HOLDS WHILE THE PLATE IS HELD',
-      cfg: { runes: [{ key: 'rune_bridge' }] },
-      map: [
-        '',
-        '   +                      +   ',
-        '',
-        '',
-        '',
-        '',
-        '                    *         ',
-        '                 #####        ',
-        '',
-        '',
-        '         *                    ',
-        '      #####          ####     ',
-        '',
-        ' P  a  R                 X    ',
-        '##############EEEEEEEE########',
-        '##############        ########'
-      ] }),
-
-  R({ id: 'c2r2', chamber: 2, name: 'Rise', dark: 0.18,
-      assist: 'ride',
-      hint: 'RECORD A JUMP  ·  THEN RIDE YOUR OWN SHOULDERS',
+  R({ id: 'c3', chamber: 3, name: 'The Long Breath', dark: 0.28,
+      onEnter: 'ch3_open', hint: 'RIDE THE RAIL',
       cfg: {
-        altars: [{ ability: 'twin', script: 'get_twin' }],
-        runes: [{ key: 'rune_rise' }]
-      },
-      map: [
-        '',
-        '        o                     ',
-        '      #####                   ',
-        '',
-        '            *                 ',
-        '         ######               ',
-        '',
-        '     *                        ',
-        '   #####                      ',
-        '',
-        '',
-        '',
-        '        #                     ',
-        ' P  T R #                 X   ',
-        G, G
-      ] }),
-
-  R({ id: 'c2r3', chamber: 2, name: 'Counterweight', dark: 0.20,
-      hint: 'TWO DOORS. TWO OF YOU.',
-      cfg: { runes: [{ key: 'rune_counter' }] },
-      map: [
-        '                  A B         ',
-        '   +              A B      +  ',
-        '                  A B         ',
-        '                  A B         ',
-        '                  A B         ',
-        '                  A B         ',
-        '                  A B         ',
-        '          *       A B         ',
-        '        #####     A B         ',
-        '                  A B         ',
-        '    *             A B         ',
-        '  #####           A B         ',
-        '                  A B         ',
-        ' P R a   b        A B  *  X   ',
-        G, G
-      ] }),
-
-  R({ id: 'c2r4', chamber: 2, name: 'The Long Hold', dark: 0.22,
-      cfg: { runes: [{ key: 'rune_hold' }] },
-      map: [
-        '                  A           ',
-        '   +              A        +  ',
-        '                  A           ',
-        '          o       A           ',
-        '        ######    A           ',
-        '                  A           ',
-        '                  A           ',
-        '          *       A           ',
-        '        ######    A           ',
-        '                  A           ',
-        '                  A     *     ',
-        '   #####          A   #####   ',
-        '                  A           ',
-        ' P a      R       A  *     X  ',
-        G, G
-      ] }),
-
-  /* =============================================================== III === */
-  /* THE LONG BREATH — the Spire's machinery still runs, and a longer
-     recording lets an Echo keep pace with it.                               */
-
-  R({ id: 'c3r1', chamber: 3, name: 'The Long Breath', dark: 0.26,
-      onEnter: 'ch3_open',
-      hint: 'RIDE THE RAIL',
-      cfg: {
+        runes: [{ key: 'rune_breath' }, { key: 'rune_rails' }, { key: 'rune_patience' }, { key: 'rune_loom' }],
         altars: [{ ability: 'longbreath', script: 'get_breath' }],
-        movers: [{ dx: 0, dy: -7, dur: 3.2, w: 2 }],
-        runes: [{ key: 'rune_breath' }]
+        movers: [{ dx: 0, dy: -7, dur: 3.4, w: 2 }, { dx: 10, dy: 0, dur: 4.2, w: 2 }, { dx: 8, dy: 0, dur: 3.8, w: 2 }]
       },
       map: [
         '',
-        '   +                      +   ',
+        '     +                        +                         +                       +',
         '',
-        '           *                  ',
-        '        ######                ',
-        '',
-        '',
-        '                  *           ',
-        '               #####          ',
+        '                                           * ^^',
+        '                                        ########',
         '',
         '',
-        '     M                        ',
+        '                                                                        o',
+        '                                                                     ########',
         '',
-        ' P  T       R             X   ',
-        G, G
+        '             *',
+        '           ######             ####### M                       #######',
+        '',
+        '  P R K  T       M             ^^^   R          K  M        ^^       R      K * R    X',
+        ' #################           #######################       ###############################',
+        ' #################           #######################       ##############################',
       ] }),
 
-  R({ id: 'c3r2', chamber: 3, name: 'Rails', dark: 0.28,
+  R({ id: 'c4', chamber: 4, name: 'The Ashworks', dark: 0.38,
+      onEnter: 'ch4_open', hint: 'C DASHES  \u00B7  HOLD A DIRECTION TO AIM IT',
       cfg: {
-        movers: [
-          { dx: 0, dy: -4, dur: 2.6, w: 2 },
-          { dx: 9, dy: 0, dur: 3.6, w: 2 }
-        ],
-        runes: [{ key: 'rune_rails' }]
-      },
-      map: [
-        '',
-        '   +                      +   ',
-        '',
-        '',
-        '               *              ',
-        '            ######            ',
-        '',
-        '',
-        '          *                   ',
-        '',
-        '          M                   ',
-        '            *                 ',
-        '       M                      ',
-        ' P   R                    X   ',
-        '#######          #############',
-        '#######          #############'
-      ] }),
-
-  R({ id: 'c3r3', chamber: 3, name: 'Patience', dark: 0.30,
-      cfg: {
-        movers: [
-          { dx: 0, dy: -7, dur: 3.6, w: 2 },
-          { dx: 0, dy: -5, dur: 3.0, w: 2 }
-        ],
-        runes: [{ key: 'rune_patience' }]
-      },
-      map: [
-        '              A               ',
-        '   +          A            +  ',
-        '              A      o        ',
-        '              A   ######      ',
-        '              A               ',
-        '              A               ',
-        '        *     A               ',
-        '     #####    A               ',
-        '              A               ',
-        '              A        M      ',
-        '              A               ',
-        '   M          A    *          ',
-        '              A  #####        ',
-        ' P      a R   A  *        X   ',
-        G, G
-      ] }),
-
-  R({ id: 'c3r4', chamber: 3, name: 'The Loom', dark: 0.30,
-      hint: 'THE FLOOR IS PROVISIONAL',
-      cfg: { runes: [{ key: 'rune_loom' }] },
-      map: [
-        '',
-        '   +                      +   ',
-        '         *                    ',
-        '       ~~~~~~                 ',
-        '',
-        '              *               ',
-        '           ######             ',
-        '',
-        '     *                        ',
-        '   ~~~~~~                     ',
-        '',
-        '          ######              ',
-        '',
-        ' P  R                     X   ',
-        G, G
-      ] }),
-
-  /* ================================================================ IV === */
-  /* THE ASHWORKS — the machine that made her. Light that cuts, and a body
-     to put in front of it.                                                  */
-
-  R({ id: 'c4r1', chamber: 4, name: 'Ashstep', dark: 0.34,
-      onEnter: 'ch4_open',
-      hint: 'C DASHES  ·  HOLD A DIRECTION TO AIM IT',
-      cfg: {
+        runes: [{ key: 'rune_dash' }, { key: 'rune_furnace' }, { key: 'rune_cut' }, { key: 'rune_assembly' }],
         altars: [{ ability: 'dash', script: 'get_dash' }],
-        runes: [{ key: 'rune_dash' }]
+        lasers: [{ blink: [1.5, 2.4, 1.5] }, { blink: [1.4, 2.8, 1.4] }]
       },
       map: [
         '',
-        '   +                      +   ',
+        '     +                            +                           +                       +',
         '',
         '',
         '',
         '',
         '',
-        '              *               ',
-        '           ######             ',
+        '                   o                                                           o',
+        '                #######                                                     ########',
+        '                                       ########################',
+        '                   *                                               r   * ^^',
+        '               ~~~~~~~~~                                            #######',
         '',
-        '       *                      ',
-        '    ######                    ',
-        '',
-        ' P  T     R               X   ',
-        '##########    ################',
-        '##########    ################'
+        '  P R K  T  R   ^^^   ^^^          K r          *        *    R K ^^                  R   X',
+        ' #########################     ###############################################################',
+        ' #########################     ##############################################################',
       ] }),
 
-  R({ id: 'c4r2', chamber: 4, name: 'Cut', dark: 0.36,
-      hint: 'A BODY STOPS THE LIGHT',
+  R({ id: 'c5', chamber: 5, name: 'The Unlit Vault', dark: 0.86,
+      onEnter: 'ch5_open', hint: 'YOUR ECHOES CARRY THE LIGHT NOW',
       cfg: {
-        // An Echo can only exist where Wren survived standing, so a beam that
-        // never sleeps can never be blocked. It pulses, and starts dark.
-        lasers: [{ blink: [1.4, 2.8, 1.4] }],
-        runes: [{ key: 'rune_cut' }]
-      },
-      /* The beam lies along the floor of a roofed corridor, so it cannot be
-       * climbed around, and the approach to it is safe. Wait for it to sleep,
-       * step in, leave a body standing in it, and walk out through the shadow
-       * your own Echo is casting. */
-      map: [
-        '',
-        '   +                      +   ',
-        '',
-        '',
-        '        o                     ',
-        '     ######                   ',
-        '',
-        '            *                 ',
-        '         ######               ',
-        '              ################',
-        '',
-        '   #####                      ',
-        '',
-        ' P R    r          *      X   ',
-        G, G
-      ] }),
-
-  R({ id: 'c4r3', chamber: 4, name: 'The Furnace', dark: 0.38,
-      cfg: {
-        lasers: [{ blink: [1.6, 2.4, 1.6] }, { blink: [1.4, 2.6, 0.5] }],
-        runes: [{ key: 'rune_furnace' }]
-      },
-      map: [
-        '',
-        '   +                      +   ',
-        '',
-        '',
-        '           *                  ',
-        '        ~~~~~~                ',
-        '',
-        ' r            *               ',
-        '           ######             ',
-        '',
-        ' r       *                    ',
-        '      ######                  ',
-        '',
-        ' P  R                     X   ',
-        G, G
-      ] }),
-
-  R({ id: 'c4r4', chamber: 4, name: 'Assembly', dark: 0.40,
-      cfg: {
-        movers: [{ dx: 8, dy: 0, dur: 4.0, w: 2 }],
-        lasers: [{ chan: 'A' }],
-        runes: [{ key: 'rune_assembly' }]
-      },
-      map: [
-        '',
-        '   +                      +   ',
-        '',
-        '             o                ',
-        '          ######              ',
-        '',
-        '',
-        '                  *           ',
-        '               ######         ',
-        '',
-        ' r        *                   ',
-        '   ########         ######    ',
-        '',
-        ' P  a  R  M           *  X    ',
-        '##########          ##########',
-        '##########          ##########'
-      ] }),
-
-  /* ================================================================= V === */
-  /* THE UNLIT VAULT — the forgetting is thickest here. Floors that only
-     exist where light falls, and the ones who stopped.                      */
-
-  R({ id: 'c5r1', chamber: 5, name: 'Lightwake', dark: 0.80,
-      onEnter: 'ch5_open',
-      hint: 'YOUR ECHOES CARRY THE LIGHT NOW',
-      cfg: {
+        runes: [{ key: 'rune_light' }, { key: 'rune_dark' }, { key: 'rune_shade' }, { key: 'rune_vault' }],
         altars: [{ ability: 'lightwake', script: 'get_light' }],
-        runes: [{ key: 'rune_light' }]
+        shades: [{ dir: -1, speed: 22 }, { dir: -1, speed: 26 }, { dir: 1, speed: 30 }]
       },
       map: [
         '',
-        '   +                          ',
+        '      +                                     +',
         '',
         '',
         '',
         '',
         '',
-        '              *               ',
-        '           ??????             ',
         '',
-        '       *                      ',
-        '    ??????                    ',
         '',
-        ' P  T     R               X   ',
-        G, G
+        '',
+        '',
+        '',
+        '',
+        '',
+        '##########################################################',
+        '',
+        '',
+        '',
+        '',
+        '                                       o',
+        '                                    ???????',
+        '',
+        '                                               *',
+        '                            ???????         #######',
+        '',
+        '                       *       S',
+        '                    ???????',
+        '',
+        '               *',
+        '            ???????',
+        '',
+        '  P R K  T          R   ^^^   S     K     S R       R X',
+        ' ########################################################',
+        ' ########################################################',
       ] }),
 
-  R({ id: 'c5r2', chamber: 5, name: 'What the Dark Keeps', dark: 0.84,
-      cfg: { runes: [{ key: 'rune_dark' }] },
-      map: [
-        '',
-        '   +                          ',
-        '          *                   ',
-        '        ?????                 ',
-        '',
-        '            *                 ',
-        '          ?????               ',
-        '',
-        '         *                    ',
-        '       ?????                  ',
-        '',
-        '         ?????                ',
-        '',
-        ' P  R                     X   ',
-        G, G
-      ] }),
-
-  R({ id: 'c5r3', chamber: 5, name: 'What Walks', dark: 0.86,
-      hint: 'LIGHT UNMAKES THEM',
+  R({ id: 'c6', chamber: 6, name: 'The Choir of One', dark: 0.55,
+      assist: 'step', onEnter: 'ch6_open', hint: 'THREE DOORS. THREE OF YOU.',
       cfg: {
-        shades: [{ dir: -1, speed: 24 }, { dir: 1, speed: 28 }],
-        runes: [{ key: 'rune_shade' }]
-      },
-      map: [
-        '',
-        '   +                          ',
-        '',
-        '          o                   ',
-        '       ######                 ',
-        '',
-        '                  *           ',
-        '               ######         ',
-        '            S                 ',
-        '         ######               ',
-        '',
-        '     *                        ',
-        '  ######                      ',
-        ' P  R        S       *    X   ',
-        G, G
-      ] }),
-
-  R({ id: 'c5r4', chamber: 5, name: 'The Vault', dark: 0.88,
-      cfg: {
-        shades: [{ dir: 1, speed: 26 }],
-        runes: [{ key: 'rune_vault' }]
-      },
-      map: [
-        '              A               ',
-        '   +          A            +  ',
-        '              A               ',
-        '              A               ',
-        '              A               ',
-        '              A               ',
-        '              A               ',
-        '              A               ',
-        '              A     *         ',
-        '              A   ??????      ',
-        '    *         A       *       ',
-        '  ??????      A    ??????     ',
-        '              A               ',
-        ' P    a  R    A  S        X   ',
-        G, G
-      ] }),
-
-  /* ================================================================ VI === */
-  /* THE CHOIR OF ONE — three of you. Everything the Spire has, at once.     */
-
-  R({ id: 'c6r1', chamber: 6, name: 'Choir', dark: 0.52,
-      onEnter: 'ch6_open',
-      cfg: {
+        runes: [{ key: 'rune_choir' }, { key: 'rune_three' }, { key: 'rune_down' }],
         altars: [{ ability: 'choir', script: 'get_choir' }],
-        runes: [{ key: 'rune_choir' }]
+        movers: [{ dx: 11, dy: 0, dur: 4.6, w: 2 }],
+        lasers: [{ blink: [1.6, 2.4, 1.6] }],
+        shades: [{ dir: -1, speed: 32 }]
       },
       map: [
-        '',
-        '   +                      +   ',
-        '          o                   ',
-        '       ######                 ',
-        '',
-        '              *               ',
-        '           ######             ',
-        '',
-        '       *                      ',
-        '    ######                    ',
-        '',
-        '           ######             ',
-        '',
-        ' P  T     R               X   ',
-        G, G
+        '                           A B D',
+        '     +                     A B D+                           +                             +',
+        '                           A B D',
+        '                           A B D',
+        '                           A B D',
+        '                           A B D',
+        '                           A B D                                                             o',
+        '                           A B D                                                          #######',
+        '                           A B D',
+        '                           A B D                      #######################',
+        '                           A B D                                                     * ^^',
+        '                           A B D                                                  ~~~~~~~~',
+        '                           A B D           *',
+        '  P R K  T   a  b  c  R    A B D  KS M            K r         *        *    K R^^^              X',
+        ' #####################################           ###################################################',
+        ' #####################################           ##################################################',
       ] }),
 
-  R({ id: 'c6r2', chamber: 6, name: 'Three Voices', dark: 0.54,
-      hint: 'THREE DOORS. THREE OF YOU.',
-      cfg: { runes: [{ key: 'rune_three' }] },
-      map: [
-        '             A B D            ',
-        '   +         A B D         +  ',
-        '             A B D            ',
-        '             A B D            ',
-        '             A B D            ',
-        '             A B D            ',
-        '             A B D            ',
-        '             A B D            ',
-        '             A B D            ',
-        '             A B D            ',
-        '    *        A B D    *       ',
-        '  ######     A B D  ######    ',
-        '             A B D            ',
-        ' P a b c R   A B D    *   X   ',
-        G, G
-      ] }),
-
-  R({ id: 'c6r3', chamber: 6, name: 'The Long Way Down', dark: 0.56,
-      cfg: {
-        movers: [{ dx: 10, dy: 0, dur: 4.2, w: 2 }],
-        lasers: [{ blink: [1.5, 2.1, 1.5] }],
-        runes: [{ key: 'rune_down' }]
-      },
-      map: [
-        '',
-        '   +                      +   ',
-        '           *                  ',
-        '        ~~~~~~                ',
-        ' r                            ',
-        '             ######           ',
-        '',
-        '                    *         ',
-        '                  ######      ',
-        '',
-        '',
-        '            *        ######   ',
-        '       M                      ',
-        ' P   R                    X   ',
-        '#########           ##########',
-        '#########           ##########'
-      ] }),
-
-  R({ id: 'c6r4', chamber: 6, name: 'One Voice', dark: 0.58,
-      cfg: {
-        lasers: [{ blink: [1.7, 2.0, 1.7] }, { blink: [1.5, 2.2, 0.4] }],
-        runes: [{ key: 'rune_one' }]
-      },
-      map: [
-        '                A   B         ',
-        '   +            A   B      +  ',
-        '                A   B         ',
-        '                A   B         ',
-        ' r       o      A   B         ',
-        '        ######  A   B         ',
-        '                A   B         ',
-        '                A   B  *      ',
-        '    ######      A   B #####   ',
-        '                A   B         ',
-        ' r        *     A   B         ',
-        '       #####    A   B  #####  ',
-        '                A   B         ',
-        ' P a  b  R      A   B    * X  ',
-        G, G
-      ] }),
-
-  /* =============================================================== VII === */
-  /* THE LUMEN — no traps. She stopped building this far down.               */
-
-  R({ id: 'c7r1', chamber: 7, name: 'The Last Door', dark: 0.30,
+  R({ id: 'c7a', chamber: 7, name: 'The Last Door', dark: 0.30,
       onEnter: 'ch7_open',
       cfg: {
-        runes: [{ key: 'rune_last1' }, { key: 'rune_last2' }, { key: 'rune_last3' }],
-        lamps: [{ r: 72 }, { r: 72 }, { r: 72 }, { r: 72 }]
+        runes: [{ key: 'rune_last1' }, { key: 'rune_last2' }, { key: 'rune_last3' }]
       },
       map: [
         '',
-        '    +      +      +      +    ',
+        '      +       +       +       +',
         '',
         '',
         '',
@@ -671,15 +302,18 @@ AL.Levels = (function () {
         '',
         '',
         '',
-        ' P    R        R       R    X ',
-        G, G
+        '  P     R         R         R       X',
+        ' #######################################',
+        ' ######################################',
       ] }),
 
-  R({ id: 'c7r2', chamber: 7, name: 'The Lumen', dark: 0.16,
-      cfg: { iris: [{ script: 'finale' }] },
+  R({ id: 'c7b', chamber: 7, name: 'The Lumen', dark: 0.16,
+      cfg: {
+        iris: [{ script: 'finale' }]
+      },
       map: [
         '',
-        '    +                    +    ',
+        '     +                     +',
         '',
         '',
         '',
@@ -689,11 +323,12 @@ AL.Levels = (function () {
         '',
         '',
         '',
-        '              _               ',
-        '           _     _            ',
-        ' P                  W         ',
-        G, G
-      ] })
+        '                 _',
+        '               _   _',
+        '  P                    W',
+        ' #################################',
+        ' ################################',
+      ] }),
 
   ];
 

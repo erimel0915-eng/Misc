@@ -83,7 +83,7 @@ function createSandbox() {
 
 const FILES = [
   'src/core/util.js', 'src/core/input.js', 'src/core/audio.js',
-  'src/core/particles.js', 'src/core/draw.js', 'src/core/save.js',
+  'src/core/particles.js', 'src/core/camera.js', 'src/core/draw.js', 'src/core/save.js',
   'src/data/levels.js', 'src/data/story.js',
   'src/game/level.js', 'src/game/entities.js', 'src/game/echo.js',
   'src/game/player.js', 'src/game/world.js', 'src/game/dialogue.js',

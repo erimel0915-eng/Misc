@@ -4,7 +4,7 @@ const win = load();
 const AL = win.AL;
 const { rooms } = AL.Levels;
 
-const KNOWN = new Set(' #-~?^v<>*oPX+abcABDEFrldu MSRTW=_'.split(''));
+const KNOWN = new Set(' #-~?^v<>*oPXK+abcABDEFrldu MSRTW=_'.split(''));
 let problems = [], notes = [];
 
 function err(id, m) { problems.push(`${id}: ${m}`); }
@@ -14,16 +14,17 @@ function note(id, m) { notes.push(`${id}: ${m}`); }
 let totalShards = 0, totalMotes = 0;
 for (const r of rooms) {
   const id = r.id;
-  if (r.map.length !== 17) err(id, `has ${r.map.length} rows, expected 17`);
+  const COLS = r.map[0].length, ROWS = r.map.length;
+  if (ROWS < 17) err(id, `only ${ROWS} rows`);
   r.map.forEach((row, y) => {
-    if (row.length !== 30) err(id, `row ${y} is ${row.length} chars`);
+    if (row.length !== COLS) err(id, `row ${y} is ${row.length} chars, expected ${COLS}`);
     for (const ch of row) if (!KNOWN.has(ch)) err(id, `unknown char '${ch}' in row ${y}`);
   });
 
   const count = c => r.map.join('').split('').filter(x => x === c).length;
   if (count('P') !== 1) err(id, `${count('P')} spawn points`);
   const exits = count('X');
-  if (r.id === 'c7r2') { if (exits !== 0) err(id, 'final room should have no exit'); }
+  if (r.id === 'c7b') { if (exits !== 0) err(id, 'final room should have no exit'); }
   else if (exits !== 1) err(id, `${exits} exits`);
 
   const shards = count('*');
@@ -61,7 +62,7 @@ for (const r of rooms) {
   r.map.forEach((row, y) => { const x = row.indexOf('P'); if (x >= 0) { py = y; px = x; } });
   if (py >= 0) {
     let found = false;
-    for (let y = py + 1; y < 17; y++) {
+    for (let y = py + 1; y < ROWS; y++) {
       const c = r.map[y][px];
       if ('#-~?EFABD'.includes(c)) { found = true; break; }
     }
@@ -72,19 +73,23 @@ for (const r of rooms) {
 /* --------------------------------------------- reachability (optimistic) */
 /* Treats every switchable tile as passable-when-needed, so the question is
  * "reachable once the switches are solved", not "reachable right now". */
-const SOLIDISH = new Set('#~?ABDEF'.split(''));   // gates/phantom/bridges count as floors
+/* Optimistic geometry: the question is "reachable once the switches are
+ * solved", so a gate counts as a floor you may stand on AND as a doorway you
+ * may walk through — whichever the route needs. Only stone and crumble block. */
+const SOLIDISH = new Set('#~'.split(''));
 const STANDABLE = new Set('#~?-ABDEF'.split(''));
 
-function analyse(r, maxRise) {
+function analyse(r, maxRise, maxGap) {
   const grid = r.map;
-  const solid = (x, y) => (x < 0 || x >= 30 || y < 0 || y >= 17) ? true : STANDABLE.has(grid[y][x]);
-  const free = (x, y) => (x < 0 || x >= 30 || y < 0 || y >= 17) ? false : !SOLIDISH.has(grid[y][x]);
-  const hazard = (x, y) => (y < 0 || y >= 17 || x < 0 || x >= 30) ? false : '^v<>'.includes(grid[y][x]);
+  const W = grid[0].length, H = grid.length;
+  const solid = (x, y) => (x < 0 || x >= W || y < 0 || y >= H) ? true : STANDABLE.has(grid[y][x]);
+  const free = (x, y) => (x < 0 || x >= W || y < 0 || y >= H) ? false : !SOLIDISH.has(grid[y][x]);
+  const hazard = (x, y) => (y < 0 || y >= H || x < 0 || x >= W) ? false : '^v<>'.includes(grid[y][x]);
 
   // candidate surfaces: solid tile with free space above
   const nodes = [];
   const index = new Map();
-  for (let y = 0; y < 17; y++) for (let x = 0; x < 30; x++) {
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     if (solid(x, y) && free(x, y - 1) && !hazard(x, y - 1)) {
       index.set(`${x},${y}`, nodes.length);
       nodes.push({ x, y });
@@ -95,7 +100,7 @@ function analyse(r, maxRise) {
     // find the Nth 'M'
   }
   let mi = 0;
-  for (let y = 0; y < 17; y++) for (let x = 0; x < 30; x++) {
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     if (grid[y][x] !== 'M') continue;
     const cfg = ((r.cfg && r.cfg.movers) || [])[mi++] || {};
     const w = cfg.w || 2;
@@ -105,7 +110,7 @@ function analyse(r, maxRise) {
       const my = Math.round(y + (cfg.dy || 0) * t);
       for (let dx = 0; dx < w; dx++) {
         const key = `${mx + dx},${my}`;
-        if (!index.has(key) && mx + dx >= 0 && mx + dx < 30 && my >= 0 && my < 17) {
+        if (!index.has(key) && mx + dx >= 0 && mx + dx < W && my >= 0 && my < H) {
           index.set(key, nodes.length); nodes.push({ x: mx + dx, y: my, mover: true });
         }
       }
@@ -116,7 +121,7 @@ function analyse(r, maxRise) {
   let sx = -1, sy = -1;
   grid.forEach((row, y) => { const x = row.indexOf('P'); if (x >= 0) { sx = x; sy = y; } });
   let start = -1;
-  for (let y = sy + 1; y < 17 && start < 0; y++) {
+  for (let y = sy + 1; y < H && start < 0; y++) {
     const k = index.get(`${sx},${y}`);
     if (k !== undefined) start = k;
   }
@@ -127,13 +132,13 @@ function analyse(r, maxRise) {
   const q = [start];
   while (q.length) {
     const n = nodes[q.shift()];
-    for (let dx = -4; dx <= 4; dx++) {
-      for (let y2 = 0; y2 < 17; y2++) {
+    for (let dx = -maxGap; dx <= maxGap; dx++) {
+      for (let y2 = 0; y2 < H; y2++) {
         const k = index.get(`${n.x + dx},${y2}`);
         if (k === undefined || reach.has(k)) continue;
         const rise = n.y - y2;                 // >0 means going up
         if (rise > maxRise) continue;          // too high without help
-        if (rise > 0 && Math.abs(dx) > 4) continue;
+        if (rise > 0 && Math.abs(dx) > maxGap) continue;
         reach.add(k); q.push(k);
       }
     }
@@ -145,9 +150,11 @@ const ASSIST_RISE = { step: 4, ride: 7 };
 for (const r of rooms) {
   // Required path: 3 rows, unless the room declares it needs an Echo.
   const strictRise = r.assist ? ASSIST_RISE[r.assist] : 3;
-  const strict = analyse(r, strictRise);
+  // The Ashstep arrives in chamber 4; a dash-jump carries about 6 tiles.
+  const maxGap = r.chamber >= 4 ? 6 : 4;
+  const strict = analyse(r, strictRise, maxGap);
   // Optional motes may always lean on an Echo ride.
-  const loose = analyse(r, 7);
+  const loose = analyse(r, 7, maxGap);
   const { reach, nodes, index } = strict;
   const reachable = (x, y) => {
     const k = index.get(`${x},${y}`);
@@ -165,7 +172,7 @@ for (const r of rooms) {
   const gettable = (x, y) => near(reach, nodes, x, y);
   const gettableLoose = (x, y) => near(loose.reach, loose.nodes, x, y);
   r.map.forEach((row, y) => {
-    for (let x = 0; x < 30; x++) {
+    for (let x = 0; x < row.length; x++) {
       const c = row[x];
       if (c === '*' && !gettable(x, y)) note(r.id, `emberlight at ${x},${y} looks hard to reach`);
       if (c === 'o' && !gettableLoose(x, y)) note(r.id, `memory at ${x},${y} unreachable even with an Echo ride`);
@@ -175,6 +182,7 @@ for (const r of rooms) {
       if (c === 'b' && !gettable(x, y)) note(r.id, `plate B at ${x},${y} looks unreachable`);
       if (c === 'c' && !gettable(x, y)) note(r.id, `plate C at ${x},${y} looks unreachable`);
       if (c === 'W' && !gettable(x, y)) note(r.id, `IRIS at ${x},${y} looks unreachable`);
+      if (c === 'K' && !gettable(x, y)) note(r.id, `checkpoint at ${x},${y} looks unreachable`);
     }
   });
 }
@@ -193,7 +201,7 @@ console.log('\n--- LASER COVERAGE ---');
 for (const r of rooms) {
   const beams = [];
   r.map.forEach((row, y) => {
-    for (let x = 0; x < 30; x++) {
+    for (let x = 0; x < row.length; x++) {
       const c = row[x];
       if (!'rldu'.includes(c)) continue;
       const bx = x * 16 + 8 + (c === 'r' ? 5 : c === 'l' ? -5 : 0);
@@ -201,7 +209,7 @@ for (const r of rooms) {
       if (c === 'r' || c === 'l') {
         // which standing surfaces does a horizontal beam at `by` endanger?
         const rows = [];
-        for (let s = 0; s < 17; s++) if (by >= s * 16 - 14 && by <= s * 16) rows.push(s);
+        for (let s = 0; s < r.map.length; s++) if (by >= s * 16 - 14 && by <= s * 16) rows.push(s);
         beams.push(`${c}@${x},${y} beam y=${by} threatens surface row(s) ${rows.join(',') || 'NONE'}`);
       } else {
         beams.push(`${c}@${x},${y} vertical beam x=${bx}`);

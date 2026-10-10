@@ -23,8 +23,15 @@ AL.Level = (function () {
     this.def = def;
     this.name = def.name || '';
     this.chamber = def.chamber || 1;
-    this.cols = AL.COLS;
-    this.rows = AL.ROWS;
+    // A level is whatever size it was authored at. One screen is just the
+    // smallest case; the camera handles the rest.
+    this.rows = def.map.length;
+    this.cols = def.map[0] ? def.map[0].length : AL.COLS;
+    this.widthPx = this.cols * TILE;
+    this.heightPx = this.rows * TILE;
+    this.dyn = [];            // cells whose solidity can change
+    this.phantoms = [];       // '?' cells, for the lighting pass
+    this.crumbles = [];       // '~' cells, for the timer pass
     this.base = [];          // char grid, immutable
     this.solid = [];         // recomputed each step
     this.lit = [];           // phantom lighting result
@@ -63,9 +70,16 @@ AL.Level = (function () {
         var c = line.charAt(x) || ' ';
         if (c === '.') c = ' ';
         brow.push(c);
-        srow.push(false);
+        srow.push(c === '#');          // static solidity, settled once
         lrow.push(false);
         crow.push(0);
+
+        if (c === '~' || c === '?' || c === 'A' || c === 'B' ||
+            c === 'D' || c === 'E' || c === 'F') {
+          this.dyn.push({ x: x, y: y, c: c });
+          if (c === '?') this.phantoms.push({ x: x, y: y });
+          if (c === '~') this.crumbles.push({ x: x, y: y });
+        }
 
         this.spawnFor(c, x, y, world);
       }
@@ -110,6 +124,7 @@ AL.Level = (function () {
       case 'S': this.entities.push(new E.Shade(px, py, this.nextCfg('shades'))); break;
       case 'R': this.entities.push(new E.Rune(px, py, this.nextCfg('runes'))); break;
       case 'T': this.entities.push(new E.Altar(px, py, this.nextCfg('altars'))); break;
+      case 'K': this.entities.push(new E.Checkpoint(px, py)); break;
       case 'W': this.entities.push(new E.Iris(px, py, this.nextCfg('iris'))); break;
     }
   };
@@ -125,45 +140,41 @@ AL.Level = (function () {
     return this.base[cy][cx];
   };
 
-  // Rebuild the solid grid from base chars + current world state.
+  /* Only the cells that can change are revisited. Stone was settled during
+   * parsing, which matters once a level is a few thousand tiles. */
   Level.prototype.rebuild = function (world) {
     var chanA = world ? world.channel('A') : false;
     var chanB = world ? world.channel('B') : false;
     var chanC = world ? world.channel('C') : false;
-    for (var y = 0; y < this.rows; y++) {
-      for (var x = 0; x < this.cols; x++) {
-        var c = this.base[y][x];
-        var s = false;
-        switch (c) {
-          case '#': s = true; break;
-          case '~': s = this.crumbleTimer[y][x] <= 0; break;
-          case '?': s = this.lit[y][x]; break;
-          case 'A': s = !chanA; break;
-          case 'B': s = !chanB; break;
-          case 'D': s = !chanC; break;
-          case 'E': s = chanA; break;     // inverse: solid while powered
-          case 'F': s = chanB; break;
-        }
-        this.solid[y][x] = s;
+    for (var i = 0; i < this.dyn.length; i++) {
+      var d = this.dyn[i];
+      var s = false;
+      switch (d.c) {
+        case '~': s = this.crumbleTimer[d.y][d.x] <= 0; break;
+        case '?': s = this.lit[d.y][d.x]; break;
+        case 'A': s = !chanA; break;
+        case 'B': s = !chanB; break;
+        case 'D': s = !chanC; break;
+        case 'E': s = chanA; break;     // inverse: solid while powered
+        case 'F': s = chanB; break;
       }
+      this.solid[d.y][d.x] = s;
     }
   };
 
   // Mark which phantom tiles are currently inside a light.
   Level.prototype.applyLight = function (lightList) {
-    for (var y = 0; y < this.rows; y++) {
-      for (var x = 0; x < this.cols; x++) {
-        if (this.base[y][x] !== '?') { this.lit[y][x] = false; continue; }
-        var cxp = x * TILE + TILE / 2, cyp = y * TILE + TILE / 2;
-        var on = false;
-        for (var i = 0; i < lightList.length; i++) {
-          var L = lightList[i];
-          if (!L.reveals) continue;
-          var dx = L.wx - cxp, dy = L.wy - cyp;
-          if (dx * dx + dy * dy <= L.r * L.r) { on = true; break; }
-        }
-        this.lit[y][x] = on;
+    for (var i = 0; i < this.phantoms.length; i++) {
+      var p = this.phantoms[i];
+      var cxp = p.x * TILE + TILE / 2, cyp = p.y * TILE + TILE / 2;
+      var on = false;
+      for (var j = 0; j < lightList.length; j++) {
+        var L = lightList[j];
+        if (!L.reveals) continue;
+        var dx = L.wx - cxp, dy = L.wy - cyp;
+        if (dx * dx + dy * dy <= L.r * L.r) { on = true; break; }
       }
+      this.lit[p.y][p.x] = on;
     }
   };
 
@@ -241,61 +252,93 @@ AL.Level = (function () {
   };
 
   Level.prototype.update = function (dt) {
-    for (var y = 0; y < this.rows; y++)
-      for (var x = 0; x < this.cols; x++)
-        if (this.crumbleTimer[y][x] > 0) this.crumbleTimer[y][x] -= dt;
+    for (var i = 0; i < this.crumbles.length; i++) {
+      var c = this.crumbles[i];
+      if (this.crumbleTimer[c.y][c.x] > 0) this.crumbleTimer[c.y][c.x] -= dt;
+    }
   };
 
   Level.prototype.reset = function () {
-    for (var y = 0; y < this.rows; y++)
-      for (var x = 0; x < this.cols; x++) this.crumbleTimer[y][x] = 0;
+    for (var i = 0; i < this.crumbles.length; i++) {
+      var c = this.crumbles[i];
+      this.crumbleTimer[c.y][c.x] = 0;
+    }
     this._warn = {};
   };
 
   /* -------------------------------------------------------------- drawing */
 
-  Level.prototype.drawBackground = function (g, world) {
+  /* Sky plus two layers of distant ruin, parallaxed against the camera.
+   * Generated once per level from its seed, so the skyline is the same every
+   * time you walk back through it. */
+  Level.prototype.buildSkyline = function () {
+    if (this._sky) return this._sky;
+    var rnd = AL.U.rng(this.seed);
+    var layers = [
+      { par: 0.25, a: 0.55, col: '#121226', n: Math.ceil(this.cols / 4), wmin: 26, wmax: 70, hmin: 50, hmax: 130 },
+      { par: 0.45, a: 0.70, col: '#0a0a16', n: Math.ceil(this.cols / 3), wmin: 18, wmax: 44, hmin: 28, hmax: 86 }
+    ];
+    for (var i = 0; i < layers.length; i++) {
+      var L = layers[i];
+      L.items = [];
+      var span = this.widthPx + AL.W * 2;
+      for (var k = 0; k < L.n; k++) {
+        L.items.push({
+          x: rnd() * span - AL.W,
+          w: L.wmin + rnd() * (L.wmax - L.wmin),
+          h: L.hmin + rnd() * (L.hmax - L.hmin),
+          notch: rnd() < 0.6
+        });
+      }
+    }
+    this._sky = layers;
+    return layers;
+  };
+
+  Level.prototype.drawBackground = function (g, world, cam) {
     var C = AL.C;
-    // vertical gradient — the Spire's throat
+    var camX = cam ? cam.renderX() : 0;
+    var camY = cam ? cam.renderY() : 0;
+
     var grad = g.createLinearGradient(0, 0, 0, AL.H);
-    var topc = AL.U.mix(C.void1, C.stone0, 0.25);
-    grad.addColorStop(0, topc);
+    grad.addColorStop(0, AL.U.mix(C.void1, C.stone0, 0.25));
     grad.addColorStop(1, C.void0);
     g.fillStyle = grad;
     g.fillRect(0, 0, AL.W, AL.H);
 
-    // parallax silhouettes, deterministic per room
-    var rnd = AL.U.rng(this.seed);
-    // Distant ruins. Kept darker than the sky and flatter than the tiles, so
-    // they never read as something you could stand on.
-    var layers = [
-      { n: 7, a: 0.55, w: 54, hmin: 50, hmax: 120, col: '#121226' },
-      { n: 9, a: 0.70, w: 34, hmin: 30, hmax: 80,  col: '#0a0a16' }
-    ];
-    for (var li = 0; li < layers.length; li++) {
-      var L = layers[li];
+    var layers = this.buildSkyline();
+    var floor = this.heightPx;
+    for (var i = 0; i < layers.length; i++) {
+      var L = layers[i];
       g.globalAlpha = L.a;
       g.fillStyle = L.col;
-      for (var i = 0; i < L.n; i++) {
-        var bx = rnd() * (AL.W + 80) - 40;
-        var bh = L.hmin + rnd() * (L.hmax - L.hmin);
-        var bw = L.w * (0.5 + rnd());
-        g.fillRect(Math.round(bx), AL.H - bh, Math.round(bw), bh);
-        // a notch, so they read as ruins not bars
-        g.globalAlpha = L.a * 0.5;
-        g.fillRect(Math.round(bx + bw * 0.3), AL.H - bh - 10, Math.round(bw * 0.4), 12);
-        g.globalAlpha = L.a;
+      for (var k = 0; k < L.items.length; k++) {
+        var b = L.items[k];
+        var sx = Math.round(b.x - camX * L.par);
+        if (sx > AL.W || sx + b.w < 0) continue;
+        var sy = Math.round(floor - b.h - camY * L.par);
+        if (sy > AL.H) continue;
+        g.fillRect(sx, sy, Math.round(b.w), Math.round(b.h + camY * L.par + 40));
+        if (b.notch) {
+          g.globalAlpha = L.a * 0.55;
+          g.fillRect(sx + Math.round(b.w * 0.3), sy - 11, Math.round(b.w * 0.4), 13);
+          g.globalAlpha = L.a;
+        }
       }
     }
     g.globalAlpha = 1;
   };
 
-  Level.prototype.draw = function (g, world) {
+  /* Only the tiles the camera can see are drawn. */
+  Level.prototype.draw = function (g, world, cam) {
     var C = AL.C;
     var T = TILE;
-    for (var y = 0; y < this.rows; y++) {
-      for (var x = 0; x < this.cols; x++) {
+    var v = cam ? cam.visibleTiles(this)
+                : { x0: 0, y0: 0, x1: this.cols - 1, y1: this.rows - 1 };
+    for (var y = v.y0; y <= v.y1; y++) {
+      for (var x = v.x0; x <= v.x1; x++) {
         var c = this.base[y][x];
+        if (c === ' ') continue;
         var px = x * T, py = y * T;
         switch (c) {
           case '#': this.drawStone(g, x, y, px, py); break;
